@@ -26,11 +26,10 @@ import { startTelemetry, logQuestionEvent, logResponseEvent, endTelemetry, logFe
 // Import audio utilities
 import { setupAudioVisualization, setupAudioRecording, stopRecording } from "@/lib/audio-utils";
 
-// import { useKeycloak } from "@react-keycloak/web";
+import { useKeycloak } from "@react-keycloak/web";
 import { cn } from "@/lib/utils";
 import { useTts } from "@/hooks/use-tts";
 import { FeedbackForm } from "@/components/FeedbackForm";
-import { useAuth } from "@/contexts/AuthContext";
 
 interface Message {
   id: string;
@@ -70,7 +69,7 @@ interface Window {
 
 export function ChatInterface() {
   const { language, t } = useLanguage();
-  const { user } = useAuth();
+  const { keycloak, initialized } = useKeycloak();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -82,7 +81,7 @@ export function ChatInterface() {
   const initialSuggestionRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [maxRecordingDuration, setMaxRecordingDuration] = useState(20000); // 8 seconds in milliseconds
+  const [maxRecordingDuration, setMaxRecordingDuration] = useState(5000); // 8 seconds in milliseconds
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [isMessageLoading, setIsMessageLoading] = useState(false); // Track if a message is currently loading
 
@@ -178,7 +177,7 @@ export function ChatInterface() {
     const newSessionId = uuidv4();
     setSessionId(newSessionId);
     apiService.setSessionId(newSessionId);
-    startTelemetry(newSessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
+    startTelemetry(newSessionId, { preferred_username: keycloak.tokenParsed?.preferred_username || "default-username", email: keycloak.tokenParsed?.email || "default-email" });
     return newSessionId;
   };
 
@@ -349,7 +348,7 @@ export function ChatInterface() {
     sourceLang = detectedLanguage.code;
     console.log(sourceLang);
     const questionId = uuidv4();
-    startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
+    startTelemetry(sessionId, { preferred_username: keycloak.tokenParsed?.preferred_username, email: keycloak.tokenParsed?.email });
     logQuestionEvent(questionId, sessionId, text);
     endTelemetry();
     // Use the current sessionId or create a new UUID if needed
@@ -393,7 +392,7 @@ export function ChatInterface() {
           questionId,
           questionText: text
         });
-        startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
+        startTelemetry(sessionId, { preferred_username: keycloak.tokenParsed?.preferred_username, email: keycloak.tokenParsed?.email });
         logResponseEvent(questionId, sessionId, text, response.response);
         endTelemetry();
         // Fetch new suggestions after the message is sent
@@ -409,7 +408,7 @@ export function ChatInterface() {
           errorTranslationKey: 'toast.apiEmptyResponse.description',
           isLoading: false,
         });
-        startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
+        startTelemetry(sessionId, { preferred_username: keycloak.tokenParsed?.preferred_username, email: keycloak.tokenParsed?.email });
         logErrorEvent(questionId, sessionId, "Empty response from API");
         endTelemetry();
       }
@@ -427,7 +426,7 @@ export function ChatInterface() {
       // Force UI refresh for error messages
       forceUIRefresh();
       
-      startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
+      startTelemetry(sessionId, { preferred_username: keycloak.tokenParsed?.preferred_username, email: keycloak.tokenParsed?.email });
       logErrorEvent(questionId, sessionId, "API error: " + (error instanceof Error ? error.message : String(error)));
       endTelemetry();
     }
@@ -529,7 +528,7 @@ export function ChatInterface() {
     setFeedbackResponseText(responseText);
     
     // Send telemetry for the like event
-    startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
+    startTelemetry(sessionId, { preferred_username: keycloak.tokenParsed?.preferred_username, email: keycloak.tokenParsed?.email });
     logFeedbackEvent(message.questionId || messageId, sessionId, "Liked the response", "like", message.questionText || "", message.text);
     endTelemetry();
 
@@ -549,7 +548,7 @@ export function ChatInterface() {
       description: t("toast.feedbackSubmitted.description") as string,
     });
     
-    startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
+    startTelemetry(sessionId, { preferred_username: keycloak.tokenParsed?.preferred_username, email: keycloak.tokenParsed?.email });
     logFeedbackEvent(message.questionId || dislikedMessageId, sessionId, feedbackText, "dislike", message.questionText || "", message.text);
     endTelemetry();
     setShowFeedbackDialog(false);
@@ -580,7 +579,7 @@ export function ChatInterface() {
     
     const scrollElement = findCurrentScrollElement();
     if (!scrollElement) {
-      // console.log('No scroll element found in isNearBottom');
+      console.log('No scroll element found in isNearBottom');
       return true; // Default to true if we can't find the container
     }
     
@@ -1029,7 +1028,7 @@ export function ChatInterface() {
       {isMobile ? (
         renderMobileInput()
       ) : (
-        <div className="fixed bottom-0 left-0 right-0 bg-background/95 supports-[backdrop-filter]:bg-background/0">
+        <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75">
           <div className="border-border">
             <div className="p-4">
               <div className="relative max-w-2xl mx-auto">

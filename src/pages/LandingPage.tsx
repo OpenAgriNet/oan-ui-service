@@ -1,3 +1,4 @@
+
 import { Button } from "@/components/ui/button";
 import { FarmMascot } from "@/components/FarmMascot";
 import { Layout } from "@/components/Layout";

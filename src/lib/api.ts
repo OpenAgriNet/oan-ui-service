@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { v4 as uuidv4 } from 'uuid';
+import type Keycloak from 'keycloak-js';
 
 export interface LocationData {
   latitude: number;
@@ -27,86 +28,46 @@ interface TTSResponse {
   session_id: string;
 }
 
-// Constants
-const JWT_STORAGE_KEY = 'auth_jwt';
-
 class ApiService {
-  private apiUrl: string = 'https://prodaskvistaar.mahapocra.gov.in';
+  private apiUrl: string = 'https://vistaar.kenpath.ai';
   private locationData: LocationData | null = null;
   private currentSessionId: string | null = null;
   private axiosInstance: AxiosInstance;
-  private authToken: string | null = null;  
+  private keycloak: Keycloak | null = null;
+
+  setKeycloakInstance(keycloak: Keycloak | null) {
+    this.keycloak = keycloak;
+  }
 
   constructor() {
-    this.authToken = this.getAuthToken();
     this.axiosInstance = axios.create({
       baseURL: this.apiUrl,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': this.authToken ? `Bearer ${this.authToken}` : 'NA'
       }
     });
-    
-    // Log the token being used
-    // console.log('Using auth token:', this.authToken );
-  }
 
-  private getAuthToken(): string | null {
-    try {
-      const tokenData = localStorage.getItem(JWT_STORAGE_KEY);
-      if (!tokenData) return null;
-      
-      const parsedData = JSON.parse(tokenData);
-      const now = new Date().getTime();
-      
-      // Check if token is expired
-      if (now > parsedData.expiry) {
-        localStorage.removeItem(JWT_STORAGE_KEY);
-        return null;
-      }
-      
-      return parsedData.token;
-    } catch (error) {
-      console.error("Error retrieving JWT for API calls:", error);
-      return null;
-    }
-  }
-
-  private refreshAuthToken(): void {
-    this.authToken = this.getAuthToken();
-    if (this.authToken) {
-      this.axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${this.authToken}`;
-    } else {
-      this.axiosInstance.defaults.headers.common['Authorization'] = 'NA';
-      this.redirectToErrorPage();
-    }
-  }
-  
-  private redirectToErrorPage(): void {
-    // Check if we're in a browser environment and not already on error page
-    if (typeof window !== 'undefined' && !window.location.pathname.includes('/error')) {
-      window.location.href = '/error?reason=auth';
-    }
-  }
-
-  updateAuthToken(): void {
-    this.refreshAuthToken();
-  }
-
-  private getAuthHeaders(): Record<string, string> {
-    // Always get fresh token before generating headers
-    this.refreshAuthToken();
-    return {
-      'Authorization': this.authToken ? `Bearer ${this.authToken}` : 'NA'
-    };
-  }
-
-  private validateAuth(): boolean {
-    if (!this.authToken) {
-      this.redirectToErrorPage();
-      return false;
-    }
-    return true;
+    this.axiosInstance.interceptors.request.use(
+      async (config) => {
+        if (this.keycloak) {
+          if (this.keycloak.updateToken) {
+            try {
+              await this.keycloak.updateToken(10);
+            } catch (e) {
+              console.error('Failed to refresh token', e);
+            }
+          }
+          if (this.keycloak.token) {
+            if (config.headers) {
+              (config.headers as Record<string, string>)["Authorization"] = `Bearer ${this.keycloak.token}`;
+              console.log('Attaching Authorization header:', config.headers["Authorization"]);
+            }
+          }
+        }
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
   }
 
   async sendUserQuery(
@@ -117,11 +78,6 @@ class ApiService {
     onStreamData?: (data: string) => void
   ): Promise<ChatResponse> {
     try {
-      this.refreshAuthToken();
-      if (!this.validateAuth()) {
-        return { response: "Authentication error", status: "error" };
-      }
-      
       const params = {
         session_id: session,
         query: msg,
@@ -130,13 +86,15 @@ class ApiService {
         ...(this.locationData && { location: `${this.locationData.latitude},${this.locationData.longitude}` })
       };
 
-      const headers = this.getAuthHeaders();
-
       if (onStreamData) {
         // Handle streaming response
+        const headers: Record<string, string> = {};
+        if (this.keycloak && this.keycloak.token) {
+          headers["Authorization"] = `Bearer ${this.keycloak.token}`;
+        }
         const response = await fetch(`${this.apiUrl}/api/chat/?${new URLSearchParams(params)}`, {
           method: 'GET',
-          headers: headers          
+          headers,
         });
 
         if (!response.ok) {
@@ -173,11 +131,7 @@ class ApiService {
         return { response: fullResponse, status: 'success' };
       } else {
         // Regular non-streaming request
-        const config = {
-          params,
-          headers: this.getAuthHeaders()
-        };
-        const response = await this.axiosInstance.get('/api/chat/', config);
+        const response = await this.axiosInstance.get('/api/chat/', { params });
         return response.data;
       }
     } catch (error) {
@@ -188,25 +142,21 @@ class ApiService {
 
   async getSuggestions(session: string, targetLang: string = 'mr'): Promise<SuggestionItem[]> {
     try {
-      this.refreshAuthToken();
-      if (!this.validateAuth()) {
-        return [];
-      }
-      
       const params = {
         session_id: session,
         target_lang: targetLang
       };
-
-      const config = {
-        params,
-        headers: this.getAuthHeaders()
-      };
-
-      const response = await this.axiosInstance.get('/api/suggest/', config);
-      return response.data.map((item: string) => ({
-        question: item
-      }));
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (this.keycloak && this.keycloak.token) {
+        headers["Authorization"] = `Bearer ${this.keycloak.token}`;
+      }
+      const url = `${this.apiUrl}/api/suggest/?${new URLSearchParams(params)}`;
+      const response = await fetch(url, { method: 'GET', headers });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      return data.map((item: string) => ({ question: item }));
     } catch (error) {
       console.error('Error getting suggestions:', error);
       throw error;
@@ -219,45 +169,49 @@ class ApiService {
     sessionId: string
   ): Promise<TranscriptionResponse> {
     try {
-      this.refreshAuthToken();
-      if (!this.validateAuth()) {
-        return { text: "", lang_code: "", status: "error" };
-      }
-      
       const payload = {
         audio_content: audioBase64,
         service_type: serviceType,
         session_id: sessionId
       };
-
-      // Explicitly set headers for this request
-      const config = {
-        headers: this.getAuthHeaders()
-      };
-
-      const response = await this.axiosInstance.post('/api/transcribe/', payload, config);
-      return response.data;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (this.keycloak && this.keycloak.token) {
+        headers["Authorization"] = `Bearer ${this.keycloak.token}`;
+      }
+      const response = await fetch(`${this.apiUrl}/api/transcribe/`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
     } catch (error) {
       console.error('Error transcribing audio:', error);
       throw error;
     }
   }
 
-  getTranscript(sessionId: string, text: string, targetLang: string): Promise<AxiosResponse<TTSResponse>> {
-    this.refreshAuthToken();
-    if (!this.validateAuth()) {
-      return Promise.reject(new Error("Authentication required"));
-    }
-    
-    const config = {
-      headers: this.getAuthHeaders()
-    };
-    
-    return this.axiosInstance.post(`/api/tts/`, {
+  async getTranscript(sessionId: string, text: string, targetLang: string): Promise<TTSResponse> {
+    const payload = {
       session_id: sessionId,
       text: text,
       target_lang: targetLang
-    }, config);
+    };
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.keycloak && this.keycloak.token) {
+      headers["Authorization"] = `Bearer ${this.keycloak.token}`;
+    }
+    const response = await fetch(`${this.apiUrl}/api/tts/`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return await response.json();
   }
 
   blobToBase64(blob: Blob): Promise<string> {

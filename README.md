@@ -1,65 +1,119 @@
-# React App
+# Welcome to your Lovable project
 
-## Project Info
+## Project info
 
-This is a React application built with Vite, TypeScript, shadcn-ui, and Tailwind CSS.
+**URL**: https://lovable.dev/projects/afec2208-4af9-49f5-938f-9c74c92f89fe
 
-## Getting Started
+## How can I edit this code?
 
-To get a local copy up and running, follow these simple steps.
+There are several ways of editing your application.
 
-### Prerequisites
+**Use Lovable**
 
-- [Node.js](https://nodejs.org/) (v16 or higher recommended)
-- [npm](https://www.npmjs.com/) (comes with Node.js)
+Simply visit the [Lovable Project](https://lovable.dev/projects/afec2208-4af9-49f5-938f-9c74c92f89fe) and start prompting.
 
-### Installation
+Changes made via Lovable will be committed automatically to this repo.
 
-1. **Clone the repository:**
+**Use your preferred IDE**
 
-   ```sh
-   git clone https://github.com/OpenAgriNet/oan-ui-service
-   ```
-2. **Navigate to the project directory:**
+If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
 
-   ```sh
-   cd oan-ui-service
-   ```
-3. **Install dependencies:**
+The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
 
-   ```sh
-   npm install
-   ```
-4. **Start the development server:**
-
-   ```sh
-   npm run dev
-   ```
-
-   The app will be available at the local address shown in your terminal (usually http://localhost:8081).
-
-## Editing the Code
-
-You can edit the code using your preferred IDE (such as VS Code). All source files are located in the `src` directory.
-
-## Technologies Used
-
-- [Vite](https://vitejs.dev/)
-- [React](https://react.dev/)
-- [TypeScript](https://www.typescriptlang.org/)
-- [shadcn-ui](https://ui.shadcn.com/)
-- [Tailwind CSS](https://tailwindcss.com/)
-
-## Deployment
-
-You can deploy this app to any static hosting provider (such as Vercel, Netlify, or GitHub Pages). To create a production build, run:
+Follow these steps:
 
 ```sh
-npm run build
+# Step 1: Clone the repository using the project's Git URL.
+git clone <YOUR_GIT_URL>
+
+# Step 2: Navigate to the project directory.
+cd <YOUR_PROJECT_NAME>
+
+# Step 3: Install the necessary dependencies.
+npm i
+
+# Step 4: Start the development server with auto-reloading and an instant preview.
+npm run dev
 ```
 
-The output will be in the `dist` folder.
+**Edit a file directly in GitHub**
 
-## License
+- Navigate to the desired file(s).
+- Click the "Edit" button (pencil icon) at the top right of the file view.
+- Make your changes and commit the changes.
 
-This project is open source and available under the [MIT License](LICENSE).
+**Use GitHub Codespaces**
+
+- Navigate to the main page of your repository.
+- Click on the "Code" button (green button) near the top right.
+- Select the "Codespaces" tab.
+- Click on "New codespace" to launch a new Codespace environment.
+- Edit files directly within the Codespace and commit and push your changes once you're done.
+
+## Keycloak Authentication Setup
+
+To enable authentication, you need a running Keycloak server. Below are steps to set up Keycloak locally and link it to this project.
+
+### 1. Run Keycloak Locally (with Docker)
+
+If you don't have Docker, install it from [here](https://www.docker.com/get-started/).
+
+Start a Keycloak server with:
+
+```sh
+docker run -p 8888:8080 -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:24.0.4 start-dev
+```
+
+- Keycloak will be available at http://localhost:8888
+- Default admin username/password: `admin` / `admin`
+
+### 2. Create Realm, Client, and User
+
+1. Go to [http://localhost:8888](http://localhost:8888) and log in as admin.
+2. **Create a Realm** (e.g., `Vistaar`).
+3. **Create a Client**:
+   - Go to 'Clients' > 'Create client'.
+   - Client ID: `vistaar-ui`
+   - Client type: `public`
+   - Root URL: `http://localhost:8081` (or your app's URL)
+   - Save and configure as needed.
+4. **Create a User**:
+   - Go to 'Users' > 'Add user'.
+   - Set username, email, etc.
+   - After creating, go to 'Credentials' tab to set a password.
+
+### 3. Link Keycloak to This App
+
+Edit `src/lib/keycloak.ts` to match your Keycloak server settings. For local development, use:
+
+```ts
+const keycloak = new Keycloak({
+  url: 'http://localhost:8888/',
+  realm: 'Vistaar',
+  clientId: 'vistaar-ui',
+});
+```
+
+If using a remote Keycloak server, update the `url`, `realm`, and `clientId` accordingly.
+
+## What technologies are used for this project?
+
+This project is built with:
+
+- Vite
+- TypeScript
+- React
+- shadcn-ui
+- Tailwind CSS
+
+## How can I deploy this project?
+
+Simply open [Lovable](https://lovable.dev/projects/afec2208-4af9-49f5-938f-9c74c92f89fe) and click on Share -> Publish.
+
+## Can I connect a custom domain to my Lovable project?
+
+Yes it is!
+
+To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+
+Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)

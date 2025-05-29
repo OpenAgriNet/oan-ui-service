@@ -9,12 +9,11 @@ import { AudioPlayerProvider } from "@/components/AudioPlayer";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import ChatPage from "./pages/ChatPage";
-import LoginPage from "./pages/LoginPage";
+// import LoginPage from "./pages/LoginPage";
 import LandingPage from "./pages/LandingPage";
-import ErrorPage from "./pages/ErrorPage";
-import { useAuth } from "./contexts/AuthContext";
-import PrivateRoute from "./components/PrivateRoute";
+import { useKeycloak } from "@react-keycloak/web";
 import { useEffect } from "react";
+import apiService from "@/lib/api";
 
 const queryClient = new QueryClient();
 
@@ -30,11 +29,22 @@ const TitleUpdater = () => {
 };
 
 const App = () => {
-  const { isLoading } = useAuth();
+  const { keycloak, initialized } = useKeycloak();
   
-  // Show loading state while auth is initializing
-  if (isLoading) {
-    return <div className="bg-foreground/80 flex justify-center items-center h-screen text-background">Loading...</div>;
+  useEffect(() => {
+    if (keycloak) {
+      apiService.setKeycloakInstance(keycloak);
+    }
+  }, [keycloak]);
+  
+  // Show loading state while Keycloak is initializing
+  if (!initialized) {
+    return <div className=" bg-foreground/80 flex justify-center items-center h-screen text-background">Loading...</div>;
+  }
+  
+  // If not authenticated, don't render the app
+  if (!keycloak.authenticated) {
+    return null;
   }
   
   return (
@@ -49,13 +59,8 @@ const App = () => {
               <BrowserRouter>
                 <Routes>
                   <Route path="/" element={<LandingPage />} />
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route path="/error" element={<ErrorPage />} />
-                  <Route path="/chat" element={
-                    <PrivateRoute>
-                      <ChatPage />
-                    </PrivateRoute>
-                  } />
+                  <Route path="/chat" element={<ChatPage />} />
+                  {/* <Route path="/login" element={<LoginPage />} /> */}
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </BrowserRouter>

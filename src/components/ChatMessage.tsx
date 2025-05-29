@@ -11,16 +11,15 @@ import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import type { Components } from 'react-markdown';
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useKeycloak } from "@react-keycloak/web";
 import { 
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger
 } from "@/components/ui/tooltip";
-// import { useKeycloak } from "@react-keycloak/web";
 import { useTts } from "@/hooks/use-tts";
 import { useLanguage } from "@/components/LanguageProvider";
-import { useAuth } from "@/contexts/AuthContext";
 
 interface ChatMessageProps {
   message: string;
@@ -59,9 +58,9 @@ export function ChatMessage({
   const [isDisliked, setIsDisliked] = useState(false);
   const { theme } = useTheme();
   const isMobile = useIsMobile();
+  const { keycloak } = useKeycloak();
   const { isPlaying, currentPlayingId, audioState, toggleAudio } = useTts();
   const { t } = useLanguage();
-  const { user } = useAuth();
 
   const getInitials = (username: string) => {
     return username?.substring(0, 2).toUpperCase() || "U";
@@ -303,7 +302,7 @@ export function ChatMessage({
             <>
               <AvatarImage src="" alt="User" />
               <AvatarFallback>
-                {getInitials(user?.username || "U")}
+              {getInitials(keycloak.tokenParsed?.preferred_username)}
               </AvatarFallback>
             </>
           ) : (

@@ -1,6 +1,7 @@
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { ReactNode, useState, useEffect, useRef } from "react";
+import { useKeycloak } from "@react-keycloak/web";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -18,7 +19,6 @@ import {
   SheetTitle
 } from "@/components/ui/sheet";
 import { Menu, User, LogOut } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/components/LanguageProvider";
 interface LayoutProps {
   children: ReactNode;
@@ -26,10 +26,10 @@ interface LayoutProps {
 }
 
 export function Layout({ children, showFooter = true }: LayoutProps) {
+  const { keycloak, initialized } = useKeycloak();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { t } = useLanguage();
-  // const { user, logout } = useAuth();
-  const { user} = useAuth();
+  // const { user, logout } =  useAuth();
   const logout = () => {};
   const headerRef = useRef<HTMLElement>(null);
   const footerRef = useRef<HTMLElement>(null);
@@ -75,14 +75,14 @@ export function Layout({ children, showFooter = true }: LayoutProps) {
         <div className="hidden md:flex items-center gap-4">
           <LanguageSelector />
           <ThemeToggle />
-          {/* {user?.authenticated && (
+          {initialized && keycloak.authenticated && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                   <Avatar className="h-8 w-8">
                     <AvatarImage src="" alt="User" />
                     <AvatarFallback>
-                      {getInitials(user.username)}
+                      {getInitials(keycloak.tokenParsed?.preferred_username)}
                     </AvatarFallback>
                   </Avatar>
                 </Button>
@@ -91,29 +91,27 @@ export function Layout({ children, showFooter = true }: LayoutProps) {
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
                     <p className="text-sm font-medium leading-none">
-                      {user.username}
+                      {keycloak.tokenParsed?.preferred_username}
                     </p>
                     <p className="text-xs leading-none text-muted-foreground">
-                      {user.email}
+                      {keycloak.tokenParsed?.email || ""}
                     </p>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {/* <DropdownMenuItem onClick={logout}>
+                <DropdownMenuItem onClick={() => keycloak.logout()}>
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Log out</span>
                 </DropdownMenuItem> 
                 </DropdownMenuContent>
             </DropdownMenu>
-          )} */} 
+          )}
         </div>
         
         {/* Mobile menu */}
         <div className="md:hidden flex items-center">
-        <ThemeToggle />
           <LanguageSelector />
-
-          {/* <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon">
                 <Menu className="h-5 w-5" />
@@ -122,33 +120,33 @@ export function Layout({ children, showFooter = true }: LayoutProps) {
             <SheetContent side="right" className="w-[240px] sm:w-[300px] px-0">
               <SheetTitle className="sr-only">Mobile Menu</SheetTitle>
               <div className="flex flex-col gap-4 py-4">
-                {user?.authenticated && (
+                {initialized && keycloak.authenticated && (
                   <div className="px-4 py-3 border-b">
                     <div className="flex items-center gap-3 mb-2">
                       <Avatar className="h-9 w-9">
                         <AvatarImage src="" alt="User" />
                         <AvatarFallback>
-                          {getInitials(user.username)}
+                          {getInitials(keycloak.tokenParsed?.preferred_username)}
                         </AvatarFallback>
                       </Avatar>
                       <div>
                         <p className="text-sm font-medium">
-                          {user.username}
+                          {keycloak.tokenParsed?.preferred_username}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {user.email}
+                          {keycloak.tokenParsed?.email || ""}
                         </p>
                       </div>
                     </div>
-                     <Button 
+                    <Button 
                       variant="outline" 
                       size="sm" 
                       className="w-full mt-2 flex items-center justify-start"
-                      onClick={logout}
+                      onClick={() => keycloak.logout()}
                     >
                       <LogOut className="mr-2 h-4 w-4" />
                       Log out
-                    </Button> 
+                    </Button>
                   </div>
                 )}
                 <div className="space-y-3 px-4">
@@ -164,7 +162,7 @@ export function Layout({ children, showFooter = true }: LayoutProps) {
                 </div>
               </div>
             </SheetContent>
-          </Sheet> */}
+          </Sheet>
         </div>
       </header>
       <main className={`flex-1 ${showFooter ? 'pb-20' : 'pb-4'}`}>
