@@ -29,7 +29,7 @@ interface TTSResponse {
 }
 
 class ApiService {
-  private apiUrl: string = 'https://vistaar.kenpath.ai';
+  private apiUrl: string = 'https://oan.kenpath.ai';
   private locationData: LocationData | null = null;
   private currentSessionId: string | null = null;
   private axiosInstance: AxiosInstance;
