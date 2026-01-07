@@ -4,8 +4,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import { LanguageProvider, useLanguage } from "@/components/LanguageProvider";
+import { LanguageProvider } from "@/components/LanguageProvider";
 import { AudioPlayerProvider } from "@/components/AudioPlayer";
+import { TenantMetaTags } from "@/components/TenantMetaTags";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import ChatPage from "./pages/ChatPage";
@@ -15,33 +16,29 @@ import ErrorPage from "./pages/ErrorPage";
 import { useAuth } from "./contexts/AuthContext";
 import PrivateRoute from "./components/PrivateRoute";
 import { useEffect } from "react";
+import { initializeThemeColors } from "@/lib/theme-colors";
 
 const queryClient = new QueryClient();
 
-// Component to update the document title
-const TitleUpdater = () => {
-  const { t } = useLanguage();
-  
-  useEffect(() => {
-    document.title = t("appTitle") as string;
-  }, [t]);
-  
-  return null;
-};
-
 const App = () => {
   const { isLoading } = useAuth();
-  
+
+  // Initialize tenant-specific theme colors
+  useEffect(() => {
+    const observer = initializeThemeColors();
+    return () => observer.disconnect();
+  }, []);
+
   // Show loading state while auth is initializing
   if (isLoading) {
     return <div className="bg-foreground/80 flex justify-center items-center h-screen text-background">Loading...</div>;
   }
-  
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="system">
         <LanguageProvider>
-          <TitleUpdater />
+          <TenantMetaTags />
           <AudioPlayerProvider>
             <TooltipProvider>
               <Toaster />

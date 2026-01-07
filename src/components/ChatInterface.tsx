@@ -24,7 +24,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { toast } from "@/hooks/use-toast";
 import { startTelemetry, logQuestionEvent, logResponseEvent, endTelemetry, logFeedbackEvent, logErrorEvent } from "@/lib/telemetry";
 // Import audio utilities
-import { setupAudioVisualization, setupAudioRecording, stopRecording } from "@/lib/audio-utils";
+import { setupAudioVisualization, setupAudioRecording, stopRecording, setupATIVoiceConversation } from "@/lib/audio-utils";
+import { getCurrentTenant } from "@/config/theme.config";
 
 // import { useKeycloak } from "@react-keycloak/web";
 import { cn } from "@/lib/utils";
@@ -43,7 +44,8 @@ interface Message {
   questionId?: string;
   questionText?: string;
   isErrorMessage?: boolean;
-    errorTranslationKey?: string;
+  errorTranslationKey?: string;
+  source?: string[]; // Source citations for AI responses (array of URLs or text)
 }
 
 interface ChatResponse {
@@ -102,7 +104,15 @@ export function ChatInterface() {
   const animationFrameRef = useRef<number | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
-  
+
+  // Audio playback for AI responses (ATI)
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+
+  // Track user loading message during ASR processing
+  const userLoadingMessageIdRef = useRef<string | null>(null);
+  const [isProcessingASR, setIsProcessingASR] = useState(false);
+
   // Feedback related states
   const feedbackOptions = t("feedbackOptions") as string[];
   const [showFeedbackDialog, setShowFeedbackDialog] = useState(false);
@@ -354,64 +364,119 @@ export function ChatInterface() {
     endTelemetry();
     // Use the current sessionId or create a new UUID if needed
     const currentSession = sessionId || createSession();
-    
+
     // Handle streaming response
     let streamingText = "";
-    
-    try {
-      // Set streaming state to true when we begin receiving message chunks
-      updateMessage(loadingMessageId, {
-        isLoading: false,
-        isStreaming: true,
-        questionId,
-        questionText: text
-      });
-      
-      const response = await apiService.sendUserQuery(
-        text,
-        currentSession,
-        sourceLang,
-        targetLang,
-        (chunk) => {
-          // Update the message with the streaming text
-          scrollToBottom(); 
-          streamingText += chunk;
-          updateMessage(loadingMessageId, {
-            text: streamingText,
-            isStreaming: true,
-            questionId,
-            questionText: text
-          });
-        }
-      ) as ChatResponse;
 
-      if (response && response.response) {
-        // Final update with complete response - set streaming to false
+    try {
+      // Check if using ATI tenant
+      if (apiService.isATITenant()) {
+        // ATI Chat API (no streaming support)
         updateMessage(loadingMessageId, {
-          text: response.response,
+          isLoading: true,
           isStreaming: false,
           questionId,
           questionText: text
         });
-        startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
-        logResponseEvent(questionId, sessionId, text, response.response);
-        endTelemetry();
-        // Fetch new suggestions after the message is sent
-        fetchSuggestions(currentSession);
+
+        const conversationId = apiService.getConversationId();
+        const atiResponse = await apiService.sendATIChatMessage(
+          text,
+          targetLang,
+          conversationId || undefined
+        );
+
+        if (atiResponse && atiResponse.assistant_message) {
+          // Use original content (in user's language), fallback to translated if needed
+          const responseText = atiResponse.assistant_message.content ||
+                               atiResponse.assistant_message.translated_content;
+
+          // Extract source citations if available
+          const sourceCitations = atiResponse.assistant_message.source;
+
+          updateMessage(loadingMessageId, {
+            text: responseText,
+            isLoading: false,
+            isStreaming: false,
+            questionId,
+            questionText: text,
+            source: sourceCitations
+          });
+
+          startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
+          logResponseEvent(questionId, sessionId, text, responseText);
+          endTelemetry();
+        } else {
+          // Handle empty response
+          updateMessage(loadingMessageId, {
+            text: '',
+            isErrorMessage: true,
+            isStreaming: false,
+            questionId,
+            questionText: text,
+            errorTranslationKey: 'toast.apiEmptyResponse.description',
+            isLoading: false,
+          });
+          startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
+          logErrorEvent(questionId, sessionId, "Empty response from ATI API");
+          endTelemetry();
+        }
       } else {
-        // Handle empty response
+        // MAHAVISTAAR API (with streaming support)
+        // Set streaming state to true when we begin receiving message chunks
         updateMessage(loadingMessageId, {
-          text: '',
-          isErrorMessage: true,
-          isStreaming: false,
-          questionId,
-          questionText: text,
-          errorTranslationKey: 'toast.apiEmptyResponse.description',
           isLoading: false,
+          isStreaming: true,
+          questionId,
+          questionText: text
         });
-        startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
-        logErrorEvent(questionId, sessionId, "Empty response from API");
-        endTelemetry();
+
+        const response = await apiService.sendUserQuery(
+          text,
+          currentSession,
+          sourceLang,
+          targetLang,
+          (chunk) => {
+            // Update the message with the streaming text
+            scrollToBottom();
+            streamingText += chunk;
+            updateMessage(loadingMessageId, {
+              text: streamingText,
+              isStreaming: true,
+              questionId,
+              questionText: text
+            });
+          }
+        ) as ChatResponse;
+
+        if (response && response.response) {
+          // Final update with complete response - set streaming to false
+          updateMessage(loadingMessageId, {
+            text: response.response,
+            isStreaming: false,
+            questionId,
+            questionText: text
+          });
+          startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
+          logResponseEvent(questionId, sessionId, text, response.response);
+          endTelemetry();
+          // Fetch new suggestions after the message is sent
+          fetchSuggestions(currentSession);
+        } else {
+          // Handle empty response
+          updateMessage(loadingMessageId, {
+            text: '',
+            isErrorMessage: true,
+            isStreaming: false,
+            questionId,
+            questionText: text,
+            errorTranslationKey: 'toast.apiEmptyResponse.description',
+            isLoading: false,
+          });
+          startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
+          logErrorEvent(questionId, sessionId, "Empty response from API");
+          endTelemetry();
+        }
       }
     } catch (error) {
       console.error("Error sending query to API:", error);
@@ -438,48 +503,93 @@ export function ChatInterface() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       await setIsRecording(true);
-      
+
       // Store the stream in the ref
       audioStreamRef.current = stream;
-      
+
       // Use the audio utility functions
       setupAudioVisualization(
-        stream, 
-        audioAnalyserRef, 
-        audioDataRef, 
-        animationFrameRef, 
+        stream,
+        audioAnalyserRef,
+        audioDataRef,
+        animationFrameRef,
         setAudioLevel
       );
-      
-      setupAudioRecording(
-        stream, 
-        mediaRecorderRef, 
-        (transcribedText: string) => {
-          // Handle transcribed text callback
-          setInputValue(prevValue => prevValue + (prevValue ? " " : "") + transcribedText);
-          setTimeout(() => {
-            const textarea = textareaRef.current;
-            if (!textarea) return;
-            textarea.style.height = '40px';
-            const scrollHeight = textarea.scrollHeight;
-            if (scrollHeight > 40) {
-              textarea.style.height = `${Math.min(scrollHeight, 120)}px`;
+
+      // Check if ATI tenant - use new voice conversation flow
+      const isATI = getCurrentTenant() === 'ATI';
+
+      if (isATI) {
+        // ATI: Use complete voice conversation flow (ASR -> Chat -> TTS)
+        let loadingMessageId = '';
+
+        setupATIVoiceConversation(
+          stream,
+          mediaRecorderRef,
+          language,
+          (transcript: string) => {
+            // Update loading user message with transcript
+            if (userLoadingMessageIdRef.current) {
+              updateMessage(userLoadingMessageIdRef.current, {
+                text: transcript,
+                isLoading: false,
+              });
+              setIsProcessingASR(false);
+              userLoadingMessageIdRef.current = null;
             }
-          }, 10);
-        },
-        sessionId,
-        toast
-      );
-      
+            scrollToBottom();
+
+            // Add loading message for AI response
+            loadingMessageId = addMessage("", false, { isLoading: true });
+          },
+          (response: string) => {
+            // Update loading message with AI response
+            if (loadingMessageId) {
+              updateMessage(loadingMessageId, {
+                text: response,
+                isLoading: false,
+              });
+            }
+            scrollToBottom();
+          },
+          (audioBlob: Blob) => {
+            // Play the audio response
+            playAudioResponse(audioBlob);
+          },
+          toast
+        );
+      } else {
+        // Non-ATI: Use traditional ASR only (fills input box)
+        setupAudioRecording(
+          stream,
+          mediaRecorderRef,
+          (transcribedText: string) => {
+            // Handle transcribed text callback - fill input box
+            setInputValue(prevValue => prevValue + (prevValue ? " " : "") + transcribedText);
+            setTimeout(() => {
+              const textarea = textareaRef.current;
+              if (!textarea) return;
+              textarea.style.height = '40px';
+              const scrollHeight = textarea.scrollHeight;
+              if (scrollHeight > 40) {
+                textarea.style.height = `${Math.min(scrollHeight, 120)}px`;
+              }
+            }, 10);
+          },
+          sessionId,
+          toast
+        );
+      }
+
       // Set timeout to stop recording after maxRecordingDuration
       recordingTimerRef.current = setTimeout(() => {
         stopRecording(
-          setIsRecording, 
-          recordingTimerRef, 
-          animationFrameRef, 
-          mediaRecorderRef, 
-          audioStreamRef, 
-          audioAnalyserRef, 
+          setIsRecording,
+          recordingTimerRef,
+          animationFrameRef,
+          mediaRecorderRef,
+          audioStreamRef,
+          audioAnalyserRef,
           audioDataRef
         );
       }, maxRecordingDuration);
@@ -493,15 +603,77 @@ export function ChatInterface() {
     }
   };
 
+  // Function to play audio response
+  const playAudioResponse = (audioBlob: Blob) => {
+    try {
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+
+      audio.onloadedmetadata = () => {
+        setIsPlayingAudio(true);
+        audio.play().catch(error => {
+          console.error('Error playing audio:', error);
+          toast({
+            title: "Playback Error",
+            description: "Could not play audio response",
+            variant: "yellow"
+          });
+        });
+      };
+
+      audio.onended = () => {
+        setIsPlayingAudio(false);
+        URL.revokeObjectURL(audioUrl);
+      };
+
+      audio.onerror = () => {
+        setIsPlayingAudio(false);
+        URL.revokeObjectURL(audioUrl);
+        toast({
+          title: "Audio Error",
+          description: "Failed to load audio response",
+          variant: "yellow"
+        });
+      };
+
+      audioPlayerRef.current = audio;
+    } catch (error) {
+      console.error('Error creating audio:', error);
+    }
+  };
+
+  const handleRecordingStop = () => {
+    if (isRecording) {
+      // Add loading message for user while ASR processes (only for ATI)
+      const isATI = getCurrentTenant() === 'ATI';
+      if (isATI) {
+        const loadingMsgId = addMessage("", true, { isLoading: true });
+        userLoadingMessageIdRef.current = loadingMsgId;
+        setIsProcessingASR(true);
+        scrollToBottom();
+      }
+
+      stopRecording(
+        setIsRecording,
+        recordingTimerRef,
+        animationFrameRef,
+        mediaRecorderRef,
+        audioStreamRef,
+        audioAnalyserRef,
+        audioDataRef
+      );
+    }
+  };
+
   const toggleRecording = () => {
     if (isRecording) {
       stopRecording(
-        setIsRecording, 
-        recordingTimerRef, 
-        animationFrameRef, 
-        mediaRecorderRef, 
-        audioStreamRef, 
-        audioAnalyserRef, 
+        setIsRecording,
+        recordingTimerRef,
+        animationFrameRef,
+        mediaRecorderRef,
+        audioStreamRef,
+        audioAnalyserRef,
         audioDataRef
       );
     } else {
@@ -911,23 +1083,41 @@ export function ChatInterface() {
                   }
                 }}
                 placeholder={t("inputPlaceholder") as string}
-                className="flex-1 resize-none overflow-y-auto min-h-[32px] max-h-[80px] transition-all duration-100"
-                style={{ 
+                className="flex-1 resize-none overflow-y-auto min-h-[32px] max-h-[80px] transition-all duration-100 focus:ring-2 focus-visible:ring-2"
+                style={{
                   overflow: inputValue && textareaRef.current?.scrollHeight > 80 ? 'auto' : 'hidden',
                   paddingRight: '8px',
                   paddingLeft: '8px',
                   paddingTop: '6px',
                   paddingBottom: '6px',
                   fontSize: isMobile ? '16px' : '',
+                  // @ts-ignore - CSS variable
+                  '--tw-ring-color': 'hsl(var(--input-focus-ring))',
                 }}
                 disabled={isMessageLoading}
               />
               <div className="flex flex-shrink-0 gap-2">
                 <Button
-                  onClick={toggleRecording}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (!isMessageLoading && !isRecording) startRecording();
+                  }}
+                  onMouseUp={handleRecordingStop}
+                  onMouseLeave={handleRecordingStop}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    if (!isMessageLoading && !isRecording) startRecording();
+                  }}
+                  onTouchEnd={handleRecordingStop}
+                  onTouchCancel={handleRecordingStop}
                   variant={isRecording ? "destructive" : "outline"}
                   size="icon"
                   className="rounded-full flex-shrink-0 h-9 w-9"
+                  style={!isRecording ? {
+                    borderColor: 'hsl(var(--button-interactive-border))',
+                    color: 'hsl(var(--button-interactive))',
+                    backgroundColor: 'transparent',
+                  } : undefined}
                   aria-label={isRecording ? t("stopRecording") as string : t("startRecording") as string}
                   disabled={isMessageLoading}
                 >
@@ -943,6 +1133,10 @@ export function ChatInterface() {
                   variant="default"
                   size="icon"
                   className="rounded-full flex-shrink-0 h-9 w-9"
+                  style={{
+                    backgroundColor: 'hsl(var(--button-interactive))',
+                    color: 'hsl(var(--button-interactive-foreground))',
+                  }}
                   aria-label={t("send") as string}
                 >
                   <Send className="h-4 w-4" />
@@ -991,7 +1185,7 @@ export function ChatInterface() {
           >
             <div className={cn(
               "message-container",
-              isMobile ? "space-y-4 px-2" : "space-y-4 px-4" // Increased spacing on mobile
+              isMobile ? "space-y-4 px-6" : "space-y-4 px-16" // Increased left/right padding
             )}>
               {messages.map((message) => (
                 <ChatMessage
@@ -1000,12 +1194,12 @@ export function ChatInterface() {
                   isUser={message.isUser}
                   timestamp={message.timestamp}
                   onDislike={
-                    !message.isUser && !message.isLoading && !message.isFeedbackMessage 
+                    !message.isUser && !message.isLoading && !message.isFeedbackMessage
                       ? (questionText: string, responseText: string) => handleDislike(message.id, message.questionText || "", message.text)
                       : undefined
                   }
                   onLike={
-                    !message.isUser && !message.isLoading && !message.isFeedbackMessage 
+                    !message.isUser && !message.isLoading && !message.isFeedbackMessage
                       ? (questionText: string, responseText: string) => handleLike(message.id, message.questionText || "", message.text)
                       : undefined
                   }
@@ -1017,6 +1211,7 @@ export function ChatInterface() {
                   responseText={message.text}
                   isErrorMessage={message.isErrorMessage}
                   errorTranslationKey={message.errorTranslationKey}
+                  source={message.source}
                 />
               ))}
               <div ref={messagesEndRef} className="h-8" />
@@ -1066,20 +1261,38 @@ export function ChatInterface() {
                     onChange={handleInputChange}
                     onKeyDown={handleKeyPress}
                     placeholder={t("inputPlaceholder") as string}
-                    className="flex-1 resize-none overflow-y-auto min-h-[40px] max-h-[80px] transition-all duration-100"
-                    style={{ 
+                    className="flex-1 resize-none overflow-y-auto min-h-[40px] max-h-[80px] transition-all duration-100 focus:ring-2 focus-visible:ring-2"
+                    style={{
                       overflow: inputValue && textareaRef.current?.scrollHeight > 80 ? 'auto' : 'hidden',
                       paddingRight: '8px',
                       paddingLeft: '8px',
                       fontSize: isMobile ? '16px' : '',
                       height: inputValue == '' ? 'auto' : 'unset',
+                      // @ts-ignore - CSS variable
+                      '--tw-ring-color': 'hsl(var(--input-focus-ring))',
                     }}
                   />
                   <Button
-                    onClick={toggleRecording}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      if (!isMessageLoading && !isRecording) startRecording();
+                    }}
+                    onMouseUp={handleRecordingStop}
+                    onMouseLeave={handleRecordingStop}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      if (!isMessageLoading && !isRecording) startRecording();
+                    }}
+                    onTouchEnd={handleRecordingStop}
+                    onTouchCancel={handleRecordingStop}
                     variant={isRecording ? "destructive" : "outline"}
                     size="icon"
                     className="rounded-full flex-shrink-0"
+                    style={!isRecording ? {
+                      borderColor: 'hsl(var(--button-interactive-border))',
+                      color: 'hsl(var(--button-interactive))',
+                      backgroundColor: 'transparent',
+                    } : undefined}
                     aria-label={isRecording ? t("stopRecording") as string : t("startRecording") as string}
                     disabled={isMessageLoading}
                   >
@@ -1095,6 +1308,10 @@ export function ChatInterface() {
                     variant="default"
                     size="icon"
                     className="rounded-full flex-shrink-0"
+                    style={{
+                      backgroundColor: 'hsl(var(--button-interactive))',
+                      color: 'hsl(var(--button-interactive-foreground))',
+                    }}
                     aria-label={t("send") as string}
                   >
                     <Send className="h-5 w-5" />

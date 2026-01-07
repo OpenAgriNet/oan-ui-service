@@ -27,31 +27,27 @@ export function EmptyStateScreen({ setInputValue }: EmptyStateScreenProps) {
   const titles = {
     en: { ask: "Ask", capabilities: "Capabilities", remember: "Remember" },
     hi: { ask: "पूछें", capabilities: "क्षमताएँ", remember: "याद रखें" },
-    mr: { ask: "विचारा", capabilities: "क्षमता", remember: "लक्षात ठेवा" }
+    mr: { ask: "विचारा", capabilities: "क्षमता", remember: "लक्षात ठेवा" },
+    am: { ask: "ይጠይቁ", capabilities: "ችሎታዎች", remember: "ያስታውሱ" }
   }[language];
-  
+
   const handleQuestionClick = (question: string) => {
     setInputValue(question);
   };
-  
-  // Icon colors based on theme
-  const askIconColor = theme === "dark" ? "text-primary" : "text-primary";
-  const capIconColor = theme === "dark" ? "text-secondary" : "text-secondary";
-  const remIconColor = theme === "dark" ? "text-amber-500" : "text-amber-500";
-  
+
   const content = (
     <div className="flex flex-col px-4 py-8 w-full mx-auto animate-fade-in">
       <div className="flex justify-center w-full pb-24 md:pb-28 md:pt-24">
         {/* Ask Section */}
         <div className="flex flex-col items-center max-w-md w-full">
           <div className="flex flex-col items-center mb-4">
-            <Snowflake className={`h-8 w-8 mb-2 ${askIconColor}`} />
+            <Snowflake className="h-8 w-8 mb-2" style={{ color: 'hsl(var(--icon-highlight))' }} />
             <h2 className="text-xl font-semibold">{titles.ask}</h2>
           </div>
           <div className="w-full space-y-3">
             {Array.isArray(questions) && questions.map((question, index) => (
-              <div 
-                key={index} 
+              <div
+                key={index}
                 className="bg-muted px-3 py-2 rounded-lg cursor-pointer hover:bg-accent/10 transition-colors flex items-center justify-center h-auto min-h-[6rem]"
                 onClick={() => handleQuestionClick(question)}
               >
@@ -60,7 +56,7 @@ export function EmptyStateScreen({ setInputValue }: EmptyStateScreenProps) {
             ))}
           </div>
         </div>
-        
+
         {/* Capabilities Section */}
         {/* <div className="flex flex-col items-center">
           <div className="flex flex-col items-center mb-4">
@@ -75,7 +71,7 @@ export function EmptyStateScreen({ setInputValue }: EmptyStateScreenProps) {
             ))}
           </div>
         </div> */}
-        
+
         {/* Remember Section */}
         {/* <div className="flex flex-col items-center">
           <div className="flex flex-col items-center mb-4">
@@ -93,11 +89,11 @@ export function EmptyStateScreen({ setInputValue }: EmptyStateScreenProps) {
       </div>
     </div>
   );
-  
+
   // On mobile, wrap in ScrollArea for better scrolling
   return isMobile ? (
     <ScrollArea className="h-[calc(100vh-var(--header-height)-var(--input-height))]">
       {content}
     </ScrollArea>
   ) : content;
-} 
+}

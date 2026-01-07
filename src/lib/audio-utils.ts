@@ -1,10 +1,18 @@
 import apiService from '@/lib/api';
+import { getCurrentTenant } from '@/config/theme.config';
 
 // Types for transcription response
 interface TranscriptionResponse {
   text: string;
   lang_code: string;
   status: string;
+}
+
+// Types for voice conversation response (ATI)
+interface VoiceConversationResponse {
+  transcript: string;
+  response: string;
+  audioBlob: Blob;
 }
 
 /**
@@ -18,24 +26,24 @@ export const setupAudioVisualization = (
   setAudioLevel: (level: number) => void
 ) => {
   // Create audio context for visualization
-  const AudioContextClass = window.AudioContext || 
+  const AudioContextClass = window.AudioContext ||
     (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   const audioContext = new AudioContextClass();
   const analyser = audioContext.createAnalyser();
   const microphone = audioContext.createMediaStreamSource(stream);
   microphone.connect(analyser);
   analyser.fftSize = 256;
-  
+
   const bufferLength = analyser.frequencyBinCount;
-  const dataArray = new Uint8Array(bufferLength);
-  
+  const dataArray = new Uint8Array(new ArrayBuffer(bufferLength));
+
   analyserRef.current = analyser;
   dataRef.current = dataArray;
   
   const updateAudioLevel = () => {
     if (!analyserRef.current || !dataRef.current) return;
-    
-    analyserRef.current.getByteFrequencyData(dataRef.current);
+
+    analyserRef.current.getByteFrequencyData(dataRef.current as Uint8Array<ArrayBuffer>);
     
     let sum = 0;
     for (let i = 0; i < dataRef.current.length; i++) {
@@ -116,7 +124,6 @@ const handleAudioSubmission = async (
     // Transcribe the audio with Bhashini Pipeline Compute Call
     const transcription = await apiService.transcribeAudio(
       base64Audio,
-      'bhashini', // real Bhashini service ID string
       sessionId
     ) as TranscriptionResponse;
     
@@ -246,29 +253,150 @@ export const stopRecording = (
   dataRef: React.MutableRefObject<Uint8Array | null>,
 ) => {
   setIsRecording(false);
-  
+
   if (timerRef.current) {
     clearTimeout(timerRef.current);
     timerRef.current = null;
   }
-  
+
   if (animationFrameRef.current) {
     cancelAnimationFrame(animationFrameRef.current);
     animationFrameRef.current = null;
   }
-  
+
   if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
     mediaRecorderRef.current.stop();
   }
-  
+
   if (streamRef.current) {
     streamRef.current.getTracks().forEach((track) => {
       track.stop();
     });
     streamRef.current = null;
   }
-  
+
   analyserRef.current = null;
   dataRef.current = null;
   mediaRecorderRef.current = null;
+};
+
+/**
+ * ATI Voice Conversation: Complete flow with audio response
+ * Sets up recording that will automatically get AI response and play it back
+ */
+export const setupATIVoiceConversation = (
+  stream: MediaStream,
+  mediaRecorderRef: React.MutableRefObject<MediaRecorder | null>,
+  language: string,
+  onTranscriptReceived: (transcript: string) => void,
+  onResponseReceived: (response: string) => void,
+  onAudioReady: (audioBlob: Blob) => void,
+  toastFn?: (props: { title: string; description: string; variant: "default" | "destructive" | "yellow" }) => void
+) => {
+  // Create MediaRecorder
+  const mediaRecorder = new MediaRecorder(stream);
+  mediaRecorderRef.current = mediaRecorder;
+  const audioChunks: BlobPart[] = [];
+
+  const AudioContextClass = window.AudioContext ||
+    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+
+  mediaRecorder.addEventListener("dataavailable", (event) => {
+    if (event.data.size > 0) {
+      audioChunks.push(event.data);
+    }
+  });
+
+  mediaRecorder.addEventListener("stop", async () => {
+    const audioBlob = new Blob(audioChunks);
+
+    try {
+      // Process audio
+      const audioContext = new AudioContextClass();
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      const optimizedBlob = await createOptimizedWav(audioBuffer);
+
+      // Call ATI voice conversation API
+      // Get current conversation ID to maintain context
+      const conversationId = apiService.getConversationId() || undefined;
+
+      await handleATIVoiceConversation(
+        optimizedBlob,
+        language,
+        onTranscriptReceived,
+        onResponseReceived,
+        onAudioReady,
+        toastFn,
+        conversationId
+      );
+    } catch (error) {
+      console.error("Error processing audio:", error);
+      if (toastFn) {
+        toastFn({
+          title: "Error",
+          description: "Failed to process your voice message. Please try again.",
+          variant: "destructive"
+        });
+      }
+    }
+  });
+
+  mediaRecorder.start(1000);
+};
+
+/**
+ * Handles the complete ATI voice conversation flow
+ */
+const handleATIVoiceConversation = async (
+  audioBlob: Blob,
+  language: string,
+  onTranscriptReceived: (transcript: string) => void,
+  onResponseReceived: (response: string) => void,
+  onAudioReady: (audioBlob: Blob) => void,
+  toastFn?: (props: { title: string; description: string; variant: "default" | "destructive" | "yellow" }) => void,
+  conversationId?: string
+) => {
+  try {
+    if (getCurrentTenant() !== 'ATI') {
+      throw new Error('Voice conversation only available for ATI');
+    }
+
+    // Map language to transcription language code
+    const languageCodeMap: Record<string, string> = {
+      'en': 'en-US',
+      'am': 'am-ET',
+      'hi': 'hi-IN',
+      'ar': 'ar-SA'
+    };
+    const languageCode = languageCodeMap[language] || 'en-US';
+
+    // Call the complete voice conversation flow with progressive callbacks
+    const result = await apiService.atiVoiceConversation(
+      audioBlob,
+      languageCode,
+      conversationId,
+      // Progressive callbacks - these will be called as each step completes
+      onTranscriptReceived,  // Called immediately after ASR
+      onResponseReceived     // Called immediately after Chat API
+    );
+
+    // Audio is ready now, notify the UI
+    onAudioReady(result.audioBlob);
+
+    // Store the conversation ID for next turn
+    if (result.conversationId) {
+      apiService.setConversationId(result.conversationId);
+    }
+
+  } catch (error) {
+    console.error("Error in ATI voice conversation:", error);
+    if (toastFn) {
+      toastFn({
+        title: "Voice Conversation Error",
+        description: "Unable to process your voice message. Please try typing instead.",
+        variant: "destructive"
+      });
+    }
+  }
 }; 

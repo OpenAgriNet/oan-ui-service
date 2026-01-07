@@ -1,0 +1,88 @@
+{
+  "welcome": "Hello! I am your farm assistant. How can I help you today?",
+  "inputPlaceholder": "Ask your question...",
+  "startRecording": "Start recording",
+  "stopRecording": "Stop recording",
+  "send": "Send message",
+  "Listen": "Listen",
+  "selectLanguage": "Select language",
+  "disclaimerText": "AI-generated content. Please verify information independently.",
+  "questions": [
+    "What are the best practices for growing wheat, from soil preparation to harvest?",
+    "How do I manage common diseases like powdery mildew in crops like wheat?",
+    "When and how should I fertilize sugarcane during the growing season?"
+  ],
+  "capabilities": [
+    "Answers are based only on standard university documents and crop SOPs.",
+    "You can ask about crop practices, pest/disease control, fertilizer schedules, and harvesting methods.",
+    "The system can give general agricultural advice but not personalized responses."
+  ],
+  "limitations": [
+    "Answers are based on documented best practices—not real-time weather, soil, or market data.",
+    "Region-specific and farm-specific recommendations are not available at this time.",
+    "Refer to the official SOP documents listed in the app for source references."
+  ],
+  "feedbackOptions": [
+    "Information is incorrect",
+    "Response is not helpful",
+    "Response is irrelevant to my question",
+    "Language or tone is inappropriate",
+    "Other issue"
+  ],
+  "feedbackTitle": "Provide Feedback",
+  "feedbackDescription": "We're sorry that response wasn't helpful. Please let us know what was wrong so we can improve.",
+  "feedbackSubmit": "Submit Feedback",
+  "feedbackCancel": "Cancel",
+  "feedbackPlaceholder": "Or tell us more about the issue...",
+  "appTitle": "MahaVISTAAR - AI",
+  "settings": "Settings",
+  "copyMessage": "Copy message",
+  "likeMessage": "Like message",
+  "dislikeMessage": "Dislike message",
+  "theme": "Theme",
+  "askYourQuestion": "Ask Your Farm Assistant",
+  "toast": {
+    "locationPermissionDenied": {
+      "title": "Location Permission Denied",
+      "description": "Location access denied. Weather-related features will not be available."
+    },
+    "locationUnavailable": {
+      "title": "Location Unavailable",
+      "description": "Location access unavailable. Weather-related features will not be available."
+    },
+    "locationTimeout": {
+      "title": "Location Timeout",
+      "description": "The request to get your location timed out. Please try again."
+    },
+    "locationError": {
+      "title": "Location Error",
+      "description": "Location error. Weather-related features will not be available."
+    },
+    "locationNotSupported": {
+      "title": "Location Not Supported",
+      "description": "Your browser does not support geolocation. Weather-related features will not be available."
+    },
+    "feedbackThankYou": {
+      "title": "Thank you for your feedback! We're glad this response was helpful.",
+      "description": "We'll use your feedback to improve our responses."
+    },
+    "feedbackSubmitted": {
+      "title": "Thank you for your feedback. We'll use it to improve our responses.",
+      "description": "We'll use your feedback to improve our responses."
+    },
+    "messageCopied": {
+      "title": "Message Copied",
+      "description": "The message has been copied to your clipboard"
+    },
+    "errorPlayingAudio": {
+      "title": "Error Playing Audio",
+      "description": "There was an error playing the audio. Please try again."
+    },
+    "apiError": {
+      "description": "Sorry, there was an error processing your request. Please try again."
+    },
+    "apiEmptyResponse": {
+      "description": "Sorry, I couldn't process your request at this time."
+    }
+  }
+}

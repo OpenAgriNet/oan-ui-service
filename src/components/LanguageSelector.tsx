@@ -1,61 +1,36 @@
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
 import { useLanguage } from "./LanguageProvider";
-import { ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export function LanguageSelector() {
-  const { language, setLanguage, t } = useLanguage();
+  const { language, setLanguage, availableLanguages } = useLanguage();
 
-  const getActiveClass = (currentLang: string) => {
-    return language === currentLang ? "font-bold bg-accent/50" : "";
-  };
-
-  const getFullLanguageName = (lang: string) => {
+  const getLanguageLabel = (lang: string) => {
     switch (lang) {
-      case "en": return "English";
-      case "hi": return "हिंदी";
-      case "mr": return "मराठी";
-      default: return "English";
+      case "en": return "EN";
+      case "hi": return "हिं";
+      case "mr": return "मर";
+      case "am": return "አማ";
+      default: return "EN";
     }
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button 
-          variant="ghost" 
-          className="flex items-center gap-1 px-3 py-1.5 text-sm"
-          aria-label="Select language"
+    <div className="bg-muted rounded-lg p-1 flex text-xs font-semibold border border-border">
+      {availableLanguages.map((lang) => (
+        <button
+          key={lang}
+          type="button"
+          onClick={() => setLanguage(lang)}
+          className={cn(
+            'px-3 py-1.5 rounded-md transition-all',
+            language === lang
+              ? 'bg-background shadow-sm text-[hsl(37_83%_52%)]'
+              : 'text-muted-foreground hover:bg-muted-foreground/10'
+          )}
         >
-          {getFullLanguageName(language)}
-          <ChevronDown size={16} />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem 
-          className={getActiveClass("en")}
-          onClick={() => setLanguage("en")}
-        >
-          English
-        </DropdownMenuItem>
-        {/* <DropdownMenuItem 
-          className={getActiveClass("hi")}
-          onClick={() => setLanguage("hi")}
-        >
-          हिंदी
-        </DropdownMenuItem> */}
-        <DropdownMenuItem 
-          className={getActiveClass("mr")}
-          onClick={() => setLanguage("mr")}
-        >
-          मराठी
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          {getLanguageLabel(lang)}
+        </button>
+      ))}
+    </div>
   );
 }
