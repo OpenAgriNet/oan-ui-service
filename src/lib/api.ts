@@ -454,31 +454,36 @@ class ApiService {
   /**
    * Transcribe audio using Amazon Transcribe (ATI only)
    * @param audioBlob - Audio blob from microphone
-   * @param languageCode - Language code (en-US, am-ET, etc.)
+   * @param languageCode - Language code (en or am)
    * @returns Transcribed text
    */
-  async atiTranscribeAudio(audioBlob: Blob, languageCode: string = 'en-US'): Promise<string> {
+  async atiTranscribeAudio(audioBlob: Blob, languageCode: string = 'en'): Promise<string> {
     try {
       if (!this.isATITenant()) {
         throw new Error('ATI transcribe service only available for ATI tenant');
       }
 
-      const formData = new FormData();
-      formData.append('file', audioBlob, 'audio.wav');
-      formData.append('language_code', languageCode);
-      formData.append('wait_for_completion', 'true');
+      // Convert audio blob to base64
+      const audioBase64 = await this.blobToBase64(audioBlob);
 
-      const response = await this.atiTranscribeInstance.post('/api/asr/transcribe', formData, {
+      // Prepare payload
+      const payload = {
+        audio_content: audioBase64,
+        lang: languageCode,
+        session_id: this.currentSessionId || 'default-session'
+      };
+
+      const response = await this.atiTranscribeInstance.post('/api/transcribe/', payload, {
         headers: {
-          'Content-Type': 'multipart/form-data'
+          'Content-Type': 'application/json'
         }
       });
 
-      if (response.data && response.data.transcript) {
-        return response.data.transcript;
+      if (response.data && response.data.text) {
+        return response.data.text;
       }
 
-      throw new Error('No transcript in response');
+      throw new Error('No text in transcribe response');
     } catch (error) {
       console.error('Error with ATI transcribe:', error);
       throw error;
@@ -498,13 +503,44 @@ class ApiService {
         throw new Error('ATI chat service only available for ATI tenant');
       }
 
-      // Use the proper ATI chat API instead of simple chat endpoint
-      const response = await this.sendATIChatMessage(message, language, conversationId);
+      // Prepare payload for chat API
+      const payload = {
+        message: message,
+        language: language
+      };
 
-      if (response && response.assistant_message && response.assistant_message.content) {
-        return response.assistant_message.content;
+      const response = await this.atiAxiosInstance.post('/api/v1/chatbot/chat', payload, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('Chat API Response:', response.data);
+
+      // Try different response structures
+      if (response.data) {
+        // Check for simple response format
+        if (response.data.response) {
+          return response.data.response;
+        }
+
+        // Check for ATI format with assistant_message
+        if (response.data.assistant_message && response.data.assistant_message.content) {
+          return response.data.assistant_message.content;
+        }
+
+        // Check for direct content
+        if (response.data.content) {
+          return response.data.content;
+        }
+
+        // Check for text field
+        if (response.data.text) {
+          return response.data.text;
+        }
       }
 
+      console.error('Unexpected response structure:', response.data);
       throw new Error('No response in chat data');
     } catch (error) {
       console.error('Error with ATI chat:', error);
@@ -527,11 +563,14 @@ class ApiService {
       // Determine endpoint based on language
       const endpoint = language === 'am' ? '/api/tts/amh/speak' : '/api/tts/speak';
 
-      const response = await this.atiTranscribeInstance.post(endpoint, {
+      // Prepare payload
+      const payload = {
         text: text,
         lang_code: language,
-        session_id: this.currentSessionId || undefined
-      }, {
+        session_id: this.currentSessionId || 'default-session'
+      };
+
+      const response = await this.atiTranscribeInstance.post(endpoint, payload, {
         responseType: 'blob'
       });
 
@@ -573,7 +612,7 @@ class ApiService {
 
       // Step 1: Transcribe audio to text
       console.log('Step 1: Transcribing audio...');
-      const transcript = await this.atiTranscribeAudio(audioBlob, languageCode);
+      const transcript = await this.atiTranscribeAudio(audioBlob, language);
       console.log('Transcript:', transcript);
 
       // Immediately notify UI with transcript
@@ -582,12 +621,9 @@ class ApiService {
       }
 
       // Step 2: Get chat response using ATI Chat API
-      console.log('Step 2: Getting chat response from ATI API...');
-      const chatApiResponse = await this.sendATIChatMessage(transcript, language, conversationId);
-      console.log('Chat response:', chatApiResponse);
-
-      // Extract response text
-      const chatResponse = chatApiResponse.assistant_message.content;
+      console.log('Step 2: Getting chat response from chatbot API...');
+      const chatResponse = await this.atiChatMessage(transcript, language, conversationId);
+      console.log('Chat response:', chatResponse);
 
       // Immediately notify UI with response
       if (onResponse) {
@@ -603,7 +639,7 @@ class ApiService {
         transcript,
         response: chatResponse,
         audioBlob: responseAudio,
-        conversationId: chatApiResponse.conversation_id
+        conversationId: conversationId || this.currentSessionId || 'default-session'
       };
     } catch (error) {
       console.error('Error in ATI voice conversation:', error);
