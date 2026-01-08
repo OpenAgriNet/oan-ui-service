@@ -87,9 +87,9 @@ export interface ATIConversationsResponse {
 
 // Constants
 const JWT_STORAGE_KEY = 'auth_jwt';
-const ATI_USER_ID = '34052121-d15e-4b2b-a4f5-fed074f97b64';
-const ATI_API_URL = 'https://api-agri.sulopa.com';
-const ATI_TRANSCRIBE_SERVICE_URL = import.meta.env.VITE_TRANSCRIBE_SERVICE_URL || 'http://13.203.218.202:8000';
+const ATI_USER_ID = import.meta.env.VITE_ATI_USER_ID;
+const ATI_API_URL = import.meta.env.VITE_API_URL;
+const ATI_TRANSCRIBE_SERVICE_URL = import.meta.env.VITE_TRANSCRIBE_SERVICE_URL;
 
 class ApiService {
   private apiUrl: string;
@@ -104,8 +104,8 @@ class ApiService {
   private currentConversationId: string | null = null;
 
   constructor() {
-    // Get API URL from environment variable with fallback to localhost
-    this.apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    // Get API URL from environment variable
+    this.apiUrl = import.meta.env.VITE_API_URL;
 
     this.authToken = this.getAuthToken();
     this.axiosInstance = axios.create({

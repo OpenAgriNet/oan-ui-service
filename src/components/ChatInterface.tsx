@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Send, Mic, MicOff, ChevronUp, ChevronLeft, ChevronRight, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -137,6 +137,26 @@ export function ChatInterface() {
 
   const { stopAudio } = useTts();
 
+  // Memoize textarea styles to prevent unnecessary re-renders
+  const mobileTextareaStyle = useMemo(() => ({
+    overflow: inputValue && textareaRef.current?.scrollHeight > 80 ? 'auto' : 'hidden',
+    paddingRight: '8px',
+    paddingLeft: '8px',
+    paddingTop: '6px',
+    paddingBottom: '6px',
+    fontSize: isMobile ? '16px' : '',
+    ['--tw-ring-color' as any]: 'hsl(var(--input-focus-ring))',
+  } as React.CSSProperties), [inputValue, isMobile]);
+
+  const desktopTextareaStyle = useMemo(() => ({
+    overflow: inputValue && textareaRef.current?.scrollHeight > 80 ? 'auto' : 'hidden',
+    paddingRight: '8px',
+    paddingLeft: '8px',
+    fontSize: isMobile ? '16px' : '',
+    height: inputValue === '' ? 'auto' : 'unset',
+    ['--tw-ring-color' as any]: 'hsl(var(--input-focus-ring))',
+  } as React.CSSProperties), [inputValue, isMobile]);
+
   // Add this effect to update the input height CSS variable
   useEffect(() => {
     const updateInputHeight = () => {
@@ -184,16 +204,16 @@ export function ChatInterface() {
   };
 
   // Create a session ID
-  const createSession = () => {
+  const createSession = useCallback(() => {
     const newSessionId = uuidv4();
     setSessionId(newSessionId);
     apiService.setSessionId(newSessionId);
     startTelemetry(newSessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
     return newSessionId;
-  };
+  }, [user?.username, user?.email]);
 
   // Get user location
-  const getUserLocation = () => {
+  const getUserLocation = useCallback(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -205,7 +225,7 @@ export function ChatInterface() {
         },
         (error) => {
           console.log("Unable to retrieve location:", error);
-          
+
           // Show toast notification based on the error
           // switch(error.code) {
           //   case error.PERMISSION_DENIED:
@@ -245,7 +265,7 @@ export function ChatInterface() {
       //   variant: "yellow",
       // });
     }
-  };
+  }, []);
 
   // Fetch suggestions for the chat - only called after a chat response
   const fetchSuggestions = async (currentSession = sessionId) => {
@@ -303,6 +323,9 @@ export function ChatInterface() {
   // Handle text message sending
   const handleSendMessage = async () => {
     if (inputValue.trim() === "" || isMessageLoading) return;
+
+    // Stop any playing audio before sending new message
+    stopAudioPlayer();
 
     if (!inputPositioned) {
       setInputPositioned(true);
@@ -501,6 +524,9 @@ export function ChatInterface() {
   // Audio recording functions
   const startRecording = async () => {
     try {
+      // Stop any playing audio before starting recording
+      stopAudioPlayer();
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       await setIsRecording(true);
 
@@ -603,9 +629,22 @@ export function ChatInterface() {
     }
   };
 
+  // Helper function to stop and clean up audio player
+  const stopAudioPlayer = useCallback(() => {
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current.src = '';
+      audioPlayerRef.current = null;
+      setIsPlayingAudio(false);
+    }
+  }, []);
+
   // Function to play audio response
   const playAudioResponse = (audioBlob: Blob) => {
     try {
+      // Clean up previous audio if it exists
+      stopAudioPlayer();
+
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
 
@@ -613,6 +652,7 @@ export function ChatInterface() {
         setIsPlayingAudio(true);
         audio.play().catch(error => {
           console.error('Error playing audio:', error);
+          URL.revokeObjectURL(audioUrl);
           toast({
             title: "Playback Error",
             description: "Could not play audio response",
@@ -624,11 +664,13 @@ export function ChatInterface() {
       audio.onended = () => {
         setIsPlayingAudio(false);
         URL.revokeObjectURL(audioUrl);
+        audioPlayerRef.current = null;
       };
 
       audio.onerror = () => {
         setIsPlayingAudio(false);
         URL.revokeObjectURL(audioUrl);
+        audioPlayerRef.current = null;
         toast({
           title: "Audio Error",
           description: "Failed to load audio response",
@@ -919,11 +961,11 @@ export function ChatInterface() {
   useEffect(() => {
     // Initialize with a new session ID right away
     createSession();
-  }, []);
+  }, [createSession]);
   
   useEffect(() => {
     getUserLocation();
-  }, []);
+  }, [getUserLocation]);
   
   useEffect(() => {
     // Don't auto-scroll when keyboard is open on mobile
@@ -1084,16 +1126,7 @@ export function ChatInterface() {
                 }}
                 placeholder={t("inputPlaceholder") as string}
                 className="flex-1 resize-none overflow-y-auto min-h-[32px] max-h-[80px] transition-all duration-100 focus:ring-2 focus-visible:ring-2"
-                style={{
-                  overflow: inputValue && textareaRef.current?.scrollHeight > 80 ? 'auto' : 'hidden',
-                  paddingRight: '8px',
-                  paddingLeft: '8px',
-                  paddingTop: '6px',
-                  paddingBottom: '6px',
-                  fontSize: isMobile ? '16px' : '',
-                  // @ts-ignore - CSS variable
-                  '--tw-ring-color': 'hsl(var(--input-focus-ring))',
-                }}
+                style={mobileTextareaStyle}
                 disabled={isMessageLoading}
               />
               <div className="flex flex-shrink-0 gap-2">
@@ -1154,12 +1187,13 @@ export function ChatInterface() {
     );
   };
 
-  // Update cleanup in useEffect to stop audio when component unmounts
+  // Cleanup audio when component unmounts
   useEffect(() => {
     return () => {
-      // No need to stop audio here as the AudioPlayer handles its own cleanup
+      // Clean up audio player on unmount
+      stopAudioPlayer();
     };
-  }, []);
+  }, [stopAudioPlayer]);
 
   return (
     <div className="flex flex-col h-full relative p-[0px!important]">
@@ -1262,15 +1296,7 @@ export function ChatInterface() {
                     onKeyDown={handleKeyPress}
                     placeholder={t("inputPlaceholder") as string}
                     className="flex-1 resize-none overflow-y-auto min-h-[40px] max-h-[80px] transition-all duration-100 focus:ring-2 focus-visible:ring-2"
-                    style={{
-                      overflow: inputValue && textareaRef.current?.scrollHeight > 80 ? 'auto' : 'hidden',
-                      paddingRight: '8px',
-                      paddingLeft: '8px',
-                      fontSize: isMobile ? '16px' : '',
-                      height: inputValue == '' ? 'auto' : 'unset',
-                      // @ts-ignore - CSS variable
-                      '--tw-ring-color': 'hsl(var(--input-focus-ring))',
-                    }}
+                    style={desktopTextareaStyle}
                   />
                   <Button
                     onMouseDown={(e) => {

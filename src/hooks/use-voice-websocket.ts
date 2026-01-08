@@ -7,7 +7,7 @@ import type {
   UseVoiceWebSocketReturn,
 } from '@/types/voice-chat.types';
 
-const WS_BASE_URL = 'wss://api-agri.sulopa.com/conv/ws';
+const WS_BASE_URL = import.meta.env.VITE_VOICE_WS_URL;
 
 /**
  * Custom hook for managing WebSocket connection for voice chat
