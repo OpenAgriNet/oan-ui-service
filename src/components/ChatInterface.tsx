@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, Mic, MicOff, ChevronUp, ChevronLeft, ChevronRight, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -137,25 +137,29 @@ export function ChatInterface() {
 
   const { stopAudio } = useTts();
 
-  // Memoize textarea styles to prevent unnecessary re-renders
-  const mobileTextareaStyle = useMemo(() => ({
-    overflow: inputValue && textareaRef.current?.scrollHeight > 80 ? 'auto' : 'hidden',
+  // Type for CSS properties with CSS custom properties (CSS variables)
+  type CSSPropertiesWithVars = React.CSSProperties & {
+    [key: `--${string}`]: string | number;
+  };
+
+  // Base textarea styles (non-dynamic parts only)
+  const baseTextareaStyle: CSSPropertiesWithVars = {
     paddingRight: '8px',
     paddingLeft: '8px',
+    '--tw-ring-color': 'hsl(var(--input-focus-ring))',
+  };
+
+  const mobileBaseStyle: CSSPropertiesWithVars = {
+    ...baseTextareaStyle,
     paddingTop: '6px',
     paddingBottom: '6px',
     fontSize: isMobile ? '16px' : '',
-    ['--tw-ring-color' as any]: 'hsl(var(--input-focus-ring))',
-  } as React.CSSProperties), [inputValue, isMobile]);
+  };
 
-  const desktopTextareaStyle = useMemo(() => ({
-    overflow: inputValue && textareaRef.current?.scrollHeight > 80 ? 'auto' : 'hidden',
-    paddingRight: '8px',
-    paddingLeft: '8px',
+  const desktopBaseStyle: CSSPropertiesWithVars = {
+    ...baseTextareaStyle,
     fontSize: isMobile ? '16px' : '',
-    height: inputValue === '' ? 'auto' : 'unset',
-    ['--tw-ring-color' as any]: 'hsl(var(--input-focus-ring))',
-  } as React.CSSProperties), [inputValue, isMobile]);
+  };
 
   // Add this effect to update the input height CSS variable
   useEffect(() => {
@@ -1126,7 +1130,10 @@ export function ChatInterface() {
                 }}
                 placeholder={t("inputPlaceholder") as string}
                 className="flex-1 resize-none overflow-y-auto min-h-[32px] max-h-[80px] transition-all duration-100 focus:ring-2 focus-visible:ring-2"
-                style={mobileTextareaStyle}
+                style={{
+                  ...mobileBaseStyle,
+                  overflow: inputValue && textareaRef.current?.scrollHeight > 80 ? 'auto' : 'hidden',
+                }}
                 disabled={isMessageLoading}
               />
               <div className="flex flex-shrink-0 gap-2">
@@ -1296,7 +1303,11 @@ export function ChatInterface() {
                     onKeyDown={handleKeyPress}
                     placeholder={t("inputPlaceholder") as string}
                     className="flex-1 resize-none overflow-y-auto min-h-[40px] max-h-[80px] transition-all duration-100 focus:ring-2 focus-visible:ring-2"
-                    style={desktopTextareaStyle}
+                    style={{
+                      ...desktopBaseStyle,
+                      overflow: inputValue && textareaRef.current?.scrollHeight > 80 ? 'auto' : 'hidden',
+                      height: inputValue === '' ? 'auto' : 'unset',
+                    }}
                   />
                   <Button
                     onMouseDown={(e) => {

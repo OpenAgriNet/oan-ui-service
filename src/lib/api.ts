@@ -191,12 +191,21 @@ class ApiService {
   }
 
   private validateAuth(): boolean {
-    // In development, allow requests without auth token
+    // ATI tenant has different auth requirements
+    const isATI = getCurrentTenant() === 'ATI';
+    const isDevelopment = import.meta.env.DEV || import.meta.env.MODE === 'development';
+
     if (!this.authToken) {
-      console.warn('No auth token found - proceeding in development mode');
-      // Don't redirect to error page in development
-      // this.redirectToErrorPage();
-      return true; // Allow the request to proceed
+      // Development OR ATI tenant: Allow without authentication
+      if (isDevelopment || isATI) {
+        console.warn(`No auth token - allowing ${isATI ? 'ATI tenant' : 'development'} access`);
+        return true;
+      }
+
+      // Production (non-ATI): Authentication required
+      console.error('Authentication required - no token found in production');
+      this.redirectToErrorPage();
+      return false;
     }
     return true;
   }
