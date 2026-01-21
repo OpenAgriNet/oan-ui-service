@@ -28,14 +28,7 @@ interface TTSResponse {
   session_id: string;
 }
 
-// ATI Chat API Interfaces
-export interface ATIChatRequest {
-  user_id: string;
-  conversation_id?: string;
-  message: string;
-  language: string;
-}
-
+// ATI Conversation Interfaces
 export interface ATIScore {
   score_id: string;
   ai_relevance_score: string;
@@ -61,13 +54,6 @@ export interface ATIMessage {
   original_language: string;
   is_translated: boolean;
   source?: string[]; // Source citations for AI responses (array of URLs or text)
-}
-
-export interface ATIChatResponse {
-  user_id: string;
-  conversation_id: string;
-  message: ATIMessage;
-  assistant_message: ATIMessage;
 }
 
 export interface ATIConversation {
@@ -407,40 +393,6 @@ class ApiService {
     return ATI_USER_ID;
   }
 
-  async sendATIChatMessage(
-    message: string,
-    language: string,
-    conversationId?: string
-  ): Promise<ATIChatResponse> {
-    try {
-      const payload: ATIChatRequest = {
-        user_id: ATI_USER_ID,
-        message,
-        language
-      };
-
-      // Include conversation_id only if it exists (for continuing conversations)
-      if (conversationId) {
-        payload.conversation_id = conversationId;
-      }
-
-      const response = await this.atiAxiosInstance.post<ATIChatResponse>(
-        '/api/v1/chatbot/chat',
-        payload
-      );
-
-      // Store the conversation ID for future messages
-      if (response.data.conversation_id) {
-        this.setConversationId(response.data.conversation_id);
-      }
-
-      return response.data;
-    } catch (error) {
-      console.error('Error sending ATI chat message:', error);
-      throw error;
-    }
-  }
-
   async getATIConversations(): Promise<ATIConversationsResponse> {
     try {
       const response = await this.atiAxiosInstance.get<ATIConversationsResponse>(
@@ -501,56 +453,41 @@ class ApiService {
 
   /**
    * Get chat response using ATI Chat API (ATI only)
-   * @param message - User message
-   * @param language - Language code (en, am, etc.)
-   * @param conversationId - Optional conversation ID to continue conversation
-   * @returns AI response text
+   * @param query - User query/message
+   * @param sessionId - Session ID for the conversation
+   * @param sourceLang - Source language code (en, am, etc.)
+   * @param targetLang - Target language code (en, am, etc.)
+   * @returns ChatResponse with response text and status
    */
-  async atiChatMessage(message: string, language: string = 'en', conversationId?: string): Promise<string> {
+  async atiChatMessage(
+    query: string,
+    sessionId: string,
+    sourceLang: string = 'en',
+    targetLang: string = 'en'
+  ): Promise<ChatResponse> {
     try {
       if (!this.isATITenant()) {
         throw new Error('ATI chat service only available for ATI tenant');
       }
 
-      // Prepare payload for chat API
+      // Prepare payload for new chat API
       const payload = {
-        message: message,
-        language: language
+        query: query,
+        session_id: sessionId,
+        source_lang: sourceLang,
+        target_lang: targetLang,
+        user_id: ATI_USER_ID
       };
 
-      const response = await this.atiAxiosInstance.post('/api/v1/chatbot/chat', payload, {
+      const response = await this.atiAxiosInstance.post<ChatResponse>('/api/chat/', payload, {
         headers: {
           'Content-Type': 'application/json'
         }
       });
 
-      console.log('Chat API Response:', response.data);
+      console.log('ATI Chat API Response:', response.data);
 
-      // Try different response structures
-      if (response.data) {
-        // Check for simple response format
-        if (response.data.response) {
-          return response.data.response;
-        }
-
-        // Check for ATI format with assistant_message
-        if (response.data.assistant_message && response.data.assistant_message.content) {
-          return response.data.assistant_message.content;
-        }
-
-        // Check for direct content
-        if (response.data.content) {
-          return response.data.content;
-        }
-
-        // Check for text field
-        if (response.data.text) {
-          return response.data.text;
-        }
-      }
-
-      console.error('Unexpected response structure:', response.data);
-      throw new Error('No response in chat data');
+      return response.data;
     } catch (error) {
       console.error('Error with ATI chat:', error);
       throw error;
@@ -631,7 +568,9 @@ class ApiService {
 
       // Step 2: Get chat response using ATI Chat API
       console.log('Step 2: Getting chat response from chatbot API...');
-      const chatResponse = await this.atiChatMessage(transcript, language, conversationId);
+      const sessionId = conversationId || this.currentSessionId || 'default-session';
+      const chatResult = await this.atiChatMessage(transcript, sessionId, language, language);
+      const chatResponse = chatResult.response;
       console.log('Chat response:', chatResponse);
 
       // Immediately notify UI with response

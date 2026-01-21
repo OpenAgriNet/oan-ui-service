@@ -3,7 +3,7 @@ FROM node:18-alpine AS build
 WORKDIR /usr/local/app
 COPY ./ /usr/local/app/
 RUN npm install
-RUN npm run build
+RUN npm run build:ati
 
 # Stage 2: Serve
 FROM nginx:alpine

@@ -406,28 +406,22 @@ export function ChatInterface() {
           questionText: text
         });
 
-        const conversationId = apiService.getConversationId();
-        const atiResponse = await apiService.sendATIChatMessage(
+        const atiResponse = await apiService.atiChatMessage(
           text,
-          targetLang,
-          conversationId || undefined
+          sessionId,
+          sourceLang,
+          targetLang
         );
 
-        if (atiResponse && atiResponse.assistant_message) {
-          // Use original content (in user's language), fallback to translated if needed
-          const responseText = atiResponse.assistant_message.content ||
-                               atiResponse.assistant_message.translated_content;
-
-          // Extract source citations if available
-          const sourceCitations = atiResponse.assistant_message.source;
+        if (atiResponse && atiResponse.status === 'success' && atiResponse.response) {
+          const responseText = atiResponse.response;
 
           updateMessage(loadingMessageId, {
             text: responseText,
             isLoading: false,
             isStreaming: false,
             questionId,
-            questionText: text,
-            source: sourceCitations
+            questionText: text
           });
 
           startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
