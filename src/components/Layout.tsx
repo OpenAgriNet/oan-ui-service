@@ -17,17 +17,21 @@ import {
   SheetTrigger,
   SheetTitle
 } from "@/components/ui/sheet";
-import { Menu, User, LogOut } from "lucide-react";
+import { Menu, User, LogOut, Phone, MessageSquare } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/components/LanguageProvider";
+import { getThemeConfig } from "@/config/theme.config";
+import { cn } from "@/lib/utils";
 interface LayoutProps {
   children: ReactNode;
   showFooter?: boolean;
+  onModeChange?: (mode: 'text' | 'voice') => void;
 }
 
-export function Layout({ children, showFooter = true }: LayoutProps) {
+export function Layout({ children, showFooter = true, onModeChange }: LayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { t } = useLanguage();
+  const themeConfig = getThemeConfig();
   // const { user, logout } = useAuth();
   const { user} = useAuth();
   const logout = () => {};
@@ -68,11 +72,33 @@ export function Layout({ children, showFooter = true }: LayoutProps) {
     <div className="flex flex-col min-h-screen">
       <header ref={headerRef} className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border flex items-center justify-between p-3">
         <div className="flex items-center gap-2">
-          <span className="font-bold text-lg text-primary">{t("appTitle").toString()}</span>
+          {themeConfig.showLogo ? (
+            <picture>
+              <source srcSet={themeConfig.logo.webp} type="image/webp" />
+              <img
+                src={themeConfig.logo.primary}
+                alt={themeConfig.name}
+                className="h-10 w-auto"
+              />
+            </picture>
+          ) : (
+            <span className="font-bold text-lg text-primary">{t("appTitle").toString()}</span>
+          )}
         </div>
         
         {/* Desktop menu */}
         <div className="hidden md:flex items-center gap-4">
+          {onModeChange && (
+            <Button
+              onClick={() => onModeChange('voice')}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+            >
+              <Phone className="h-4 w-4" />
+              Voice Mode
+            </Button>
+          )}
           <LanguageSelector />
           <ThemeToggle />
           {/* {user?.authenticated && (
@@ -109,8 +135,19 @@ export function Layout({ children, showFooter = true }: LayoutProps) {
         </div>
         
         {/* Mobile menu */}
-        <div className="md:hidden flex items-center">
-        <ThemeToggle />
+        <div className="md:hidden flex items-center gap-2">
+          {onModeChange && (
+            <Button
+              onClick={() => onModeChange('voice')}
+              variant="outline"
+              size="sm"
+              className="gap-1 text-xs px-2 py-1 h-8"
+            >
+              <Phone className="h-3 w-3" />
+              Voice
+            </Button>
+          )}
+          <ThemeToggle />
           <LanguageSelector />
 
           {/* <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -176,7 +213,7 @@ export function Layout({ children, showFooter = true }: LayoutProps) {
         <footer ref={footerRef} className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-md border-t border-border p-3">
           <div className="max-w-md mx-auto">
             <p className="text-xs text-center text-muted-foreground">
-              © {new Date().getFullYear()} MahaVistaar App
+              © {new Date().getFullYear()} {themeConfig.footer.copyrightName}
             </p>
           </div>
         </footer>

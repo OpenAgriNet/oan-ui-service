@@ -2,49 +2,61 @@ import { useLanguage } from "@/components/LanguageProvider";
 import { Button } from "@/components/ui/button";
 import { Volume2 } from "lucide-react";
 import { useState } from "react";
+import { type Language } from "@/config/theme.config";
 
 interface LanguageOption {
-  code: "en" | "hi" | "mr";
+  code: Language;
   nativeName: string;
   englishName: string;
   selectText: string;
 }
 
 export function LanguageSelectionScreen({ onLanguageSelected }: { onLanguageSelected: () => void }) {
-  const { setLanguage } = useLanguage();
+  const { setLanguage, availableLanguages } = useLanguage();
   const [hoveredLanguage, setHoveredLanguage] = useState<string | null>(null);
-  
-  const languageOptions: LanguageOption[] = [
-    {
+
+  // All available language options
+  const allLanguageOptions: Record<Language, LanguageOption> = {
+    en: {
       code: "en",
       nativeName: "English",
       englishName: "English",
       selectText: "Select English"
     },
-    // {
-    //   code: "hi",
-    //   nativeName: "हिंदी",
-    //   englishName: "Hindi",
-    //   selectText: "हिंदी चुनें"
-    // },
-    {
+    hi: {
+      code: "hi",
+      nativeName: "हिंदी",
+      englishName: "Hindi",
+      selectText: "हिंदी चुनें"
+    },
+    mr: {
       code: "mr",
       nativeName: "मराठी",
       englishName: "Marathi",
       selectText: "मराठी निवडा"
+    },
+    am: {
+      code: "am",
+      nativeName: "አማርኛ",
+      englishName: "Amharic",
+      selectText: "አማርኛ ይምረጡ"
     }
-  ];
+  };
+
+  // Filter language options based on tenant's available languages
+  const languageOptions: LanguageOption[] = availableLanguages.map(lang => allLanguageOptions[lang]);
   
-  const handleLanguageSelect = (languageCode: "en" | "hi" | "mr") => {
+  const handleLanguageSelect = (languageCode: Language) => {
     setLanguage(languageCode);
     onLanguageSelected();
   };
-  
-  const playAudio = (languageCode: "en" | "hi" | "mr") => {
-    const audioFiles: Record<"en" | "hi" | "mr", string> = {
-      en: "/en.wav", 
+
+  const playAudio = (languageCode: Language) => {
+    const audioFiles: Record<Language, string> = {
+      en: "/en.wav",
       hi: "/hi.wav",
       mr: "/mr.wav",
+      am: "/am.wav",
     };
 
     const filePath = audioFiles[languageCode];
@@ -66,7 +78,7 @@ export function LanguageSelectionScreen({ onLanguageSelected }: { onLanguageSele
             <Button
               variant="outline"
               size="lg"
-              className="w-full h-32 flex flex-col items-center justify-center gap-4 text-lg border-2 hover:border-primary hover:bg-primary/5 transition-all"
+              className="w-full h-32 flex flex-col items-center justify-center gap-4 text-lg border-2 transition-all language-select-btn"
               onClick={() => handleLanguageSelect(lang.code)}
             >
               <div className="flex flex-col items-center gap-1">

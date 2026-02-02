@@ -12,6 +12,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
+    "build:ati": "vite build --mode production.ati",
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "vite"

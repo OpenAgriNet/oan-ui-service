@@ -1,0 +1,88 @@
+{
+  "welcome": "Hello! I am your agricultural assistant. How can I help you today?",
+  "inputPlaceholder": "Ask your question...",
+  "startRecording": "Start recording",
+  "stopRecording": "Stop recording",
+  "send": "Send message",
+  "Listen": "Listen",
+  "selectLanguage": "Select language",
+  "disclaimerText": "AI-generated content. Please verify information independently.",
+  "questions": [
+    "Will the weather be suitable for sowing wheat in Amber next week?",
+    "What is the current price of wheat in Amber market of Amhara Region?",
+    "What is the market price for oxen in Dubti?"
+  ],
+  "capabilities": [
+    "Get information on Ethiopian crop cultivation practices and techniques.",
+    "Learn about pest and disease management for common crops.",
+    "Access guidance on fertilization, irrigation, and harvesting methods."
+  ],
+  "limitations": [
+    "Information is based on general agricultural best practices for Ethiopia.",
+    "Real-time market prices and weather forecasts are not available.",
+    "For location-specific advice, please consult local agricultural extension officers."
+  ],
+  "feedbackOptions": [
+    "Information is incorrect",
+    "Response is not helpful",
+    "Response is irrelevant to my question",
+    "Language or tone is inappropriate",
+    "Other issue"
+  ],
+  "feedbackTitle": "Provide Feedback",
+  "feedbackDescription": "We're sorry that response wasn't helpful. Please let us know what was wrong so we can improve.",
+  "feedbackSubmit": "Submit Feedback",
+  "feedbackCancel": "Cancel",
+  "feedbackPlaceholder": "Or tell us more about the issue...",
+  "appTitle": "ATI - Agricultural Information",
+  "settings": "Settings",
+  "copyMessage": "Copy message",
+  "likeMessage": "Like message",
+  "dislikeMessage": "Dislike message",
+  "theme": "Theme",
+  "askYourQuestion": "Ask Your Agricultural Assistant",
+  "toast": {
+    "locationPermissionDenied": {
+      "title": "Location Permission Denied",
+      "description": "Location access denied. Weather-related features will not be available."
+    },
+    "locationUnavailable": {
+      "title": "Location Unavailable",
+      "description": "Location access unavailable. Weather-related features will not be available."
+    },
+    "locationTimeout": {
+      "title": "Location Timeout",
+      "description": "The request to get your location timed out. Please try again."
+    },
+    "locationError": {
+      "title": "Location Error",
+      "description": "Location error. Weather-related features will not be available."
+    },
+    "locationNotSupported": {
+      "title": "Location Not Supported",
+      "description": "Your browser does not support geolocation. Weather-related features will not be available."
+    },
+    "feedbackThankYou": {
+      "title": "Thank you for your feedback! We're glad this response was helpful.",
+      "description": "We'll use your feedback to improve our responses."
+    },
+    "feedbackSubmitted": {
+      "title": "Thank you for your feedback. We'll use it to improve our responses.",
+      "description": "We'll use your feedback to improve our responses."
+    },
+    "messageCopied": {
+      "title": "Message Copied",
+      "description": "The message has been copied to your clipboard"
+    },
+    "errorPlayingAudio": {
+      "title": "Error Playing Audio",
+      "description": "There was an error playing the audio. Please try again."
+    },
+    "apiError": {
+      "description": "Sorry, there was an error processing your request. Please try again."
+    },
+    "apiEmptyResponse": {
+      "description": "Sorry, I couldn't process your request at this time."
+    }
+  }
+}

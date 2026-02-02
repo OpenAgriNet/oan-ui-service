@@ -43,13 +43,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // JWT validation public key
   const publicKeyPEM = `-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1SU1LfVLPHCozMxH2Mo
-4lgOEePzNm0tRgeLezV6ffAt0gunVTLw7onLRnrq0/IzW7yWR7QkrmBL7jTKEn5u
-+qKhbwKfBstIs+bMY2Zkp18gnTxKLxoS2tFczGkPLPgizskuemMghRniWaoLcyeh
-kd3qqGElvW/VDL5AaWTg0nLVkjRo9z+40RQzuVaE8AkAFmxZzow3x+VJYKdjykkJ
-0iT9wCS0DRTXu269V264Vf/3jvredZiKRkgwlL9xNAwxXFg0x/XFw005UWVRIkdg
-cKWTjpBP2dPwVZ4WWC+9aGVd+Gyn1o0CLelf4rEjGoXbAAEgAqeGUxrcIlbjXfbc
-mwIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqoQ4rn2ogsMuVbAfHops
+iWhTP1V9wjihFM3cTtcKAO5VyKheoBy8VIGkAqCBU1/HT4WexPOs2I2xZYW9Z67x
+YwcbN3zZMTEI/kyOJMhWt+vTaVeLV+FBGgTg1mNiD0vITNhC0PHDHy1mqD/5fV7R
+Ab4E8jInmZMg1Xz1vPeEDDcb9VDiHqESny7AwofRGlcxVTRc62hSKzYwMQMGKuPo
+uEJPe0eOluTB4hK3mbpGH2ePqH4vfVXJlcnMTAZjm4C/qMfvJojnSWwzowmxeQyu
+c4i60Jl+Jp5mSjaoM1ll0xe0kjXtjqC88ZZQQPZfNM1zKHcbPc1Y4th9MiEiesrH
+WwIDAQAB
 -----END PUBLIC KEY-----`;
 
   // Initialize auth state on component mount

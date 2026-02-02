@@ -3,6 +3,7 @@ import apiService from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { useLanguage } from '@/components/LanguageProvider';
 import { useAudioPlayer } from '@/components/AudioPlayer';
+import { getCurrentTenant } from '@/config/theme.config';
 
 interface AudioState {
   [key: string]: 'idle' | 'loading' | 'ready' | 'playing';
@@ -53,7 +54,7 @@ export function useTts() {
 
   const playAudio = useCallback(async (text: string, messageId: string) => {
     pendingPlayRequests.current.set(messageId, true);
-    
+
     try {
       if (audioCache.current.has(messageId)) {
         const audioBuffer = audioCache.current.get(messageId)!;
@@ -62,25 +63,39 @@ export function useTts() {
       }
 
       updateAudioState(messageId, 'loading');
-      
-      // Get the session ID from the API service
-      const sessionId = apiService.getSessionId() || '';
-      
-      // Call the new getTranscript API
-      const response = await apiService.getTranscript(sessionId, text, language);
-      
-      if (response.data.audio_data) {
-        const audioBuffer = base64ToArrayBuffer(response.data.audio_data);
-        audioCache.current.set(messageId, audioBuffer);
-        
+
+      const isATI = getCurrentTenant() === 'ATI';
+
+      if (isATI) {
+        // ATI: Use new transcribe-service TTS endpoint
+        const audioBlob = await apiService.atiTextToSpeech(text, language);
+        const arrayBuffer = await audioBlob.arrayBuffer();
+        audioCache.current.set(messageId, arrayBuffer);
+
         if (!pendingPlayRequests.current.get(messageId)) {
           return;
         }
-        
+
         pendingPlayRequests.current.delete(messageId);
-        return playAudioFromBuffer(audioBuffer, messageId);
+        return playAudioFromBuffer(arrayBuffer, messageId);
       } else {
-        throw new Error('No audio data received');
+        // Non-ATI: Use traditional TTS endpoint
+        const sessionId = apiService.getSessionId() || '';
+        const response = await apiService.getTranscript(sessionId, text, language);
+
+        if (response.data.audio_data) {
+          const audioBuffer = base64ToArrayBuffer(response.data.audio_data);
+          audioCache.current.set(messageId, audioBuffer);
+
+          if (!pendingPlayRequests.current.get(messageId)) {
+            return;
+          }
+
+          pendingPlayRequests.current.delete(messageId);
+          return playAudioFromBuffer(audioBuffer, messageId);
+        } else {
+          throw new Error('No audio data received');
+        }
       }
     } catch (error) {
       console.error('Error in playAudio:', error);
