@@ -57,8 +57,16 @@ export const useVoiceAudio = (): UseVoiceAudioReturn => {
    */
   const startRecording = useCallback(async (onAudioData: (data: ArrayBuffer) => void) => {
     try {
-      // Create audio context
+      // Create audio context for recording
       const audioContext = createVoiceAudioContext();
+
+      // CRITICAL: Initialize Playback Context here (User Gesture) to satisfy Autoplay Policy
+      if (!playbackAudioContextRef.current) {
+        playbackAudioContextRef.current = createVoiceAudioContext();
+      }
+      if (playbackAudioContextRef.current.state === 'suspended') {
+        await playbackAudioContextRef.current.resume();
+      }
 
       // Create and load AudioWorklet processor
       const processorUrl = createAudioWorkletProcessor();
@@ -70,23 +78,38 @@ export const useVoiceAudio = (): UseVoiceAudioReturn => {
       // Create audio source
       const source = audioContext.createMediaStreamSource(mediaStream);
 
+      // Create gain node to boost microphone signal (Web Audio often has low levels)
+      const gainNode = audioContext.createGain();
+      gainNode.gain.value = 3.0; // Boost by 3x
+      source.connect(gainNode);
+
       // Create analyser for visualization
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = 256;
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      source.connect(analyser);
+      gainNode.connect(analyser);
 
       // Create AudioWorklet node
       const workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
 
       // Handle audio data from worklet
+      let audioChunkCount = 0;
       workletNode.port.onmessage = (event) => {
+        audioChunkCount++;
+        const audioData = event.data as Float32Array;
+
+        // Log every 10th chunk with amplitude info
+        if (audioChunkCount % 10 === 0) {
+          const maxAmp = Math.max(...Array.from(audioData).map(Math.abs));
+          console.log(`🔊 Audio chunk #${audioChunkCount}: ${audioData.length} samples, max amp: ${maxAmp.toFixed(4)}`);
+        }
+
         // Send Float32Array buffer to WebSocket
         onAudioData(event.data.buffer);
       };
 
-      // Connect audio graph
-      source.connect(workletNode);
+      // Connect audio graph: source -> gain -> worklet -> destination
+      gainNode.connect(workletNode);
       workletNode.connect(audioContext.destination);
 
       // Store refs
@@ -159,6 +182,11 @@ export const useVoiceAudio = (): UseVoiceAudioReturn => {
     }
 
     const audioContext = playbackAudioContextRef.current;
+
+    // Resume context if suspended (Browser Autoplay Policy fix)
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
+    }
 
     // Convert Int16Array to Float32Array
     const float32Data = convertInt16ToFloat32(arrayBuffer);

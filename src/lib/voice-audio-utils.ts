@@ -10,14 +10,33 @@
 export const createAudioWorkletProcessor = (): string => {
   const processorCode = `
     class PCMProcessor extends AudioWorkletProcessor {
+      constructor() {
+        super();
+        // Buffer to accumulate samples before sending
+        // At 16kHz: 2048 samples = 128ms of audio (balanced latency/stability)
+        this.bufferSize = 2048;
+        this.buffer = new Float32Array(this.bufferSize);
+        this.bufferIndex = 0;
+      }
+
       process(inputs, outputs, parameters) {
         const input = inputs[0];
 
         if (input.length > 0) {
           const channelData = input[0]; // Get first channel (mono)
-
-          // Send Float32Array to main thread
-          this.port.postMessage(channelData);
+          
+          // Copy samples to buffer
+          for (let i = 0; i < channelData.length; i++) {
+            this.buffer[this.bufferIndex++] = channelData[i];
+            
+            // When buffer is full, send it
+            if (this.bufferIndex >= this.bufferSize) {
+              // Send a copy of the buffer
+              const chunk = this.buffer.slice(0);
+              this.port.postMessage(chunk);
+              this.bufferIndex = 0;
+            }
+          }
         }
 
         return true; // Keep processor alive

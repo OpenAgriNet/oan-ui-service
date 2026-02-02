@@ -169,17 +169,17 @@ export function ChatInterface() {
         document.documentElement.style.setProperty('--input-height', `${inputHeight}px`);
       }
     };
-    
+
     // Call initially and set up resize observer
     updateInputHeight();
-    
+
     const resizeObserver = new ResizeObserver(updateInputHeight);
     if (inputContainerRef.current) {
       resizeObserver.observe(inputContainerRef.current);
     }
-    
+
     window.addEventListener('resize', updateInputHeight);
-    
+
     return () => {
       resizeObserver.disconnect();
       window.removeEventListener('resize', updateInputHeight);
@@ -196,7 +196,7 @@ export function ChatInterface() {
       timestamp: new Date(),
       ...options
     };
-    
+
     setMessages(prev => [...prev, newMessage]);
     return id;
   };
@@ -275,7 +275,7 @@ export function ChatInterface() {
   const fetchSuggestions = async (currentSession = sessionId) => {
     // Use the current sessionId or create a new one if needed
     const sessionToUse = currentSession || createSession();
-    
+
     try {
       const suggestions = await apiService.getSuggestions(sessionToUse, language) as SuggestionItem[];
       if (suggestions && suggestions.length > 0) {
@@ -291,19 +291,19 @@ export function ChatInterface() {
       //   "How to prevent crop diseases during monsoon?",
       // ];
       // setNewSuggestion({ question: fallbackSuggestions[Math.floor(Math.random() * fallbackSuggestions.length)] });
-    
+
     }
   };
 
   const setNewSuggestion = (suggestions: SuggestionItem[] | { question: string }) => {
     let suggestionsList: string[];
-    
+
     if (Array.isArray(suggestions)) {
       suggestionsList = suggestions.map(s => s.question);
     } else {
       suggestionsList = [suggestions.question];
     }
-    
+
     setAllSuggestions(suggestionsList);
     setCurrentSuggestion(suggestionsList[0]);
     setCurrentSuggestionIndex(0);
@@ -337,13 +337,13 @@ export function ChatInterface() {
     scrollToBottomOfMessages();
     // Add user message
     const userMessageId = addMessage(inputValue, true);
-    
+
     // Add loading message for bot
     const loadingMessageId = addMessage("", false, { isLoading: true });
-    
+
     // Set message loading state
     setIsMessageLoading(true);
-    
+
     // Clear input
     setInputValue("");
 
@@ -470,16 +470,16 @@ export function ChatInterface() {
           }
         ) as ChatResponse;
 
-        if (response && response.response) {
+        if (response && (response.status === 'success' || streamingText)) {
           // Final update with complete response - set streaming to false
           updateMessage(loadingMessageId, {
-            text: response.response,
+            text: streamingText || response.response,
             isStreaming: false,
             questionId,
             questionText: text
           });
           startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
-          logResponseEvent(questionId, sessionId, text, response.response);
+          logResponseEvent(questionId, sessionId, text, streamingText || response.response);
           endTelemetry();
           // Fetch new suggestions after the message is sent
           fetchSuggestions(currentSession);
@@ -509,10 +509,10 @@ export function ChatInterface() {
         isErrorMessage: true,
         errorTranslationKey: 'toast.apiError.description',
       });
-      
+
       // Force UI refresh for error messages
       forceUIRefresh();
-      
+
       startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
       logErrorEvent(questionId, sessionId, "API error: " + (error instanceof Error ? error.message : String(error)));
       endTelemetry();
@@ -739,7 +739,7 @@ export function ChatInterface() {
     setLikedMessageId(messageId);
     setFeedbackQuestionText(questionText);
     setFeedbackResponseText(responseText);
-    
+
     // Send telemetry for the like event
     startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
     logFeedbackEvent(message.questionId || messageId, sessionId, "Liked the response", "like", message.questionText || "", message.text);
@@ -751,7 +751,7 @@ export function ChatInterface() {
       description: t("toast.feedbackThankYou.description") as string,
     });
   };
-  
+
   const submitFeedback = () => {
     const message = messages.find(m => m.id === dislikedMessageId);
     if (!message) return;
@@ -760,7 +760,7 @@ export function ChatInterface() {
       title: t("toast.feedbackSubmitted.title") as string,
       description: t("toast.feedbackSubmitted.description") as string,
     });
-    
+
     startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
     logFeedbackEvent(message.questionId || dislikedMessageId, sessionId, feedbackText, "dislike", message.questionText || "", message.text);
     endTelemetry();
@@ -781,23 +781,23 @@ export function ChatInterface() {
     // Find the real scrollable element more reliably
     const findCurrentScrollElement = () => {
       if (viewportRef.current) return viewportRef.current;
-      
+
       if (scrollContainerRef.current) {
         const viewport = scrollContainerRef.current.closest('[data-radix-scroll-area-viewport]');
         if (viewport) return viewport as HTMLDivElement;
       }
-      
+
       return scrollContainerRef.current;
     };
-    
+
     const scrollElement = findCurrentScrollElement();
     if (!scrollElement) {
       // console.log('No scroll element found in isNearBottom');
       return true; // Default to true if we can't find the container
     }
-    
-    const threshold =80; // 50px from bottom threshold
-    
+
+    const threshold = 80; // 50px from bottom threshold
+
     const scrollHeight = scrollElement.scrollHeight;
     const scrollTop = scrollElement.scrollTop;
     const clientHeight = scrollElement.clientHeight;
@@ -809,16 +809,16 @@ export function ChatInterface() {
   const scrollToBottom = () => {
     // Don't auto-scroll when keyboard is open on mobile
     if (isMobile && isKeyboardVisible) return;
-    
+
     const shouldScroll = isNearBottom();
     if (shouldScroll) {
-      const scrollElement = viewportRef.current || 
-                          (scrollContainerRef.current?.closest('[data-radix-scroll-area-viewport]') as HTMLDivElement) || 
-                          scrollContainerRef.current;
-                          
+      const scrollElement = viewportRef.current ||
+        (scrollContainerRef.current?.closest('[data-radix-scroll-area-viewport]') as HTMLDivElement) ||
+        scrollContainerRef.current;
+
       if (scrollElement) {
         const bottomPosition = scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight;
-        
+
         // If exactly at bottom (within 1px), use instant scroll, otherwise smooth scroll
         const scrollBehavior = bottomPosition <= 1 ? "auto" : "smooth";
         messagesEndRef.current?.scrollIntoView({ behavior: scrollBehavior as ScrollBehavior });
@@ -832,13 +832,13 @@ export function ChatInterface() {
   const scrollToBottomOfMessages = () => {
     // Don't force scroll when keyboard is open on mobile
     if (isMobile && isKeyboardVisible) return;
-    
+
     // Use setTimeout to ensure DOM is updated
     setTimeout(() => {
-      const scrollElement = viewportRef.current || 
-                         (scrollContainerRef.current?.closest('[data-radix-scroll-area-viewport]') as HTMLDivElement) || 
-                         scrollContainerRef.current;
-      
+      const scrollElement = viewportRef.current ||
+        (scrollContainerRef.current?.closest('[data-radix-scroll-area-viewport]') as HTMLDivElement) ||
+        scrollContainerRef.current;
+
       if (scrollElement) {
         // Always scroll to bottom regardless of current position
         scrollElement.scrollTop = scrollElement.scrollHeight;
@@ -847,7 +847,7 @@ export function ChatInterface() {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, 500);
   }
-  
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -858,14 +858,14 @@ export function ChatInterface() {
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const text = e.target.value;
     setInputValue(text);
-    
+
     // Instantly adjust height on input change
     const textarea = textareaRef.current;
     if (!textarea) return;
-    
+
     // Always set to 40px first
     textarea.style.height = '40px';
-    
+
     // Only expand if there's content and it needs more space
     if (text.trim().length > 0) {
       const scrollHeight = textarea.scrollHeight;
@@ -874,15 +874,15 @@ export function ChatInterface() {
       }
     }
   };
-  
+
   // Simplified height adjustment function
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
     if (!textarea) return;
-    
+
     // Always set to 40px first
     textarea.style.height = '40px';
-    
+
     // Only expand if there's content and it needs more space
     if (inputValue.trim().length > 0) {
       const scrollHeight = textarea.scrollHeight;
@@ -897,22 +897,22 @@ export function ChatInterface() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       await setIsFeedbackRecording(true);
-      
+
       // Store the stream in the ref
       feedbackAudioStreamRef.current = stream;
-      
+
       // Use the audio utility functions
       setupAudioVisualization(
-        stream, 
-        feedbackAudioAnalyserRef, 
-        feedbackAudioDataRef, 
-        feedbackAnimationFrameRef, 
+        stream,
+        feedbackAudioAnalyserRef,
+        feedbackAudioDataRef,
+        feedbackAnimationFrameRef,
         setFeedbackAudioLevel
       );
-      
+
       setupAudioRecording(
-        stream, 
-        feedbackMediaRecorderRef, 
+        stream,
+        feedbackMediaRecorderRef,
         (transcribedText: string) => {
           // Handle transcribed text callback for feedback
           setFeedbackText(prevValue => prevValue + (prevValue ? " " : "") + transcribedText);
@@ -920,7 +920,7 @@ export function ChatInterface() {
         sessionId,
         toast
       );
-      
+
       // Set timeout to stop recording after maxRecordingDuration
       feedbackRecordingTimerRef.current = setTimeout(() => {
         stopFeedbackRecording();
@@ -937,12 +937,12 @@ export function ChatInterface() {
 
   const stopFeedbackRecording = () => {
     stopRecording(
-      setIsFeedbackRecording, 
-      feedbackRecordingTimerRef, 
-      feedbackAnimationFrameRef, 
-      feedbackMediaRecorderRef, 
-      feedbackAudioStreamRef, 
-      feedbackAudioAnalyserRef, 
+      setIsFeedbackRecording,
+      feedbackRecordingTimerRef,
+      feedbackAnimationFrameRef,
+      feedbackMediaRecorderRef,
+      feedbackAudioStreamRef,
+      feedbackAudioAnalyserRef,
       feedbackAudioDataRef
     );
   };
@@ -960,33 +960,33 @@ export function ChatInterface() {
     // Initialize with a new session ID right away
     createSession();
   }, [createSession]);
-  
+
   useEffect(() => {
     getUserLocation();
   }, [getUserLocation]);
-  
+
   useEffect(() => {
     // Don't auto-scroll when keyboard is open on mobile
     if (isMobile && isKeyboardVisible) return;
-    
+
     // Always scroll to bottom when messages change
     scrollToBottom();
   }, [messages, isMobile, isKeyboardVisible]);
-  
+
   // Remove the typing animation effect for suggestions
   useEffect(() => {
     if (!isTyping || !currentSuggestion) return;
-    
+
     if (typingIndex >= currentSuggestion.length) {
       setIsTyping(false);
       return;
     }
-    
+
     const typingTimeout = setTimeout(() => {
       setDisplayedSuggestion(prev => prev + currentSuggestion.charAt(typingIndex));
       setTypingIndex(prev => prev + 1);
     }, 50);
-    
+
     return () => clearTimeout(typingTimeout);
   }, [isTyping, typingIndex, currentSuggestion]);
 
@@ -998,24 +998,24 @@ export function ChatInterface() {
   // Add a keyboard detection effect
   useEffect(() => {
     if (!isMobile) return;
-    
+
     // Helper function to handle keyboard detection
     const handleKeyboardAppearance = () => {
       // On iOS, we can detect keyboard appearance by window height changes
       const visualViewport = window.visualViewport;
       if (!visualViewport) return;
-      
+
       // Track keyboard visibility by comparing visual viewport height to window inner height
       const handleVisualViewportChange = () => {
         const kbHeight = Math.max(0, window.innerHeight - visualViewport.height);
         document.documentElement.style.setProperty('--keyboard-offset', `${kbHeight}px`);
-        
+
         setKeyboardHeight(kbHeight);
-        
+
         // Only change keyboard visibility state if significant height change
         if (kbHeight > 100 && !isKeyboardVisible) {
           setIsKeyboardVisible(true);
-          
+
           // Make sure input sits directly on top of keyboard with no gap
           if (inputContainerRef.current) {
             // Remove the bottom property since we'll use transform in the component
@@ -1023,18 +1023,18 @@ export function ChatInterface() {
           }
         } else if (kbHeight <= 100 && isKeyboardVisible) {
           setIsKeyboardVisible(false);
-          
+
           // Keyboard is hidden
           if (inputContainerRef.current) {
             inputContainerRef.current.style.bottom = '0';
           }
         }
       };
-      
+
       visualViewport.addEventListener('resize', handleVisualViewportChange);
       return () => visualViewport.removeEventListener('resize', handleVisualViewportChange);
     };
-    
+
     const cleanup = handleKeyboardAppearance();
     return cleanup;
   }, [isMobile, isKeyboardVisible]);
@@ -1062,128 +1062,128 @@ export function ChatInterface() {
     // Fix for iOS to ensure the input sticks to the keyboard
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
     const adjustedHeight = isIOS && isKeyboardVisible ? keyboardHeight - 1 : keyboardHeight; // -1px to ensure visual contact on iOS
-    
+
     return (
       <>
-      <div 
-        className="fixed left-0 right-0 bottom-0 z-20 flex flex-col"
-        style={{
-          transform: isKeyboardVisible ? `translateY(-${adjustedHeight}px)` : 'none',
-          paddingBottom: isKeyboardVisible ? '0' : 'env(safe-area-inset-bottom, 8px)'
-        }}
-      >
-        {currentSuggestion && (
-          <div 
-            className="mx-3 mb-2 bg-background/95 p-3 backdrop-blur rounded-lg text-sm cursor-pointer border border-primary hover:border hover:border-primary transition-all"
-            onClick={() => handleSuggestionSelect(currentSuggestion)}
-          >
-            <div className="flex items-center justify-between">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-6 w-6 rounded-full" 
-                onClick={handlePreviousSuggestion}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <div className="font-medium">{currentSuggestion}</div>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-6 w-6 rounded-full" 
-                onClick={handleNextSuggestion}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        )}
-        <div 
-          ref={inputContainerRef}
-          className={cn(
-            "bg-background border-t border-border transition-all duration-200",
-            isKeyboardVisible ? "shadow-lg border-b-0" : ""
-          )}
+        <div
+          className="fixed left-0 right-0 bottom-0 z-20 flex flex-col"
+          style={{
+            transform: isKeyboardVisible ? `translateY(-${adjustedHeight}px)` : 'none',
+            paddingBottom: isKeyboardVisible ? '0' : 'env(safe-area-inset-bottom, 8px)'
+          }}
         >
-          <div className="p-3">
-            <div className="flex items-center gap-2 bg-background rounded-lg border border-border p-2">
-              <Textarea
-                ref={textareaRef}
-                value={inputValue}
-                onChange={handleInputChange}
-                onKeyDown={handleKeyPress}
-                onFocus={() => {
-                  // Ensure positioning gets updated on focus
-                  if (window.visualViewport) {
-                    const kbHeight = Math.max(0, window.innerHeight - window.visualViewport.height);
-                    if (kbHeight > 100) {
-                      setIsKeyboardVisible(true);
-                      setKeyboardHeight(kbHeight);
-                    }
-                  }
-                }}
-                placeholder={t("inputPlaceholder") as string}
-                className="flex-1 resize-none overflow-y-auto min-h-[32px] max-h-[80px] transition-all duration-100 focus:ring-2 focus-visible:ring-2"
-                style={{
-                  ...mobileBaseStyle,
-                  overflow: inputValue && textareaRef.current?.scrollHeight > 80 ? 'auto' : 'hidden',
-                }}
-                disabled={isMessageLoading}
-              />
-              <div className="flex flex-shrink-0 gap-2">
+          {currentSuggestion && (
+            <div
+              className="mx-3 mb-2 bg-background/95 p-3 backdrop-blur rounded-lg text-sm cursor-pointer border border-primary hover:border hover:border-primary transition-all"
+              onClick={() => handleSuggestionSelect(currentSuggestion)}
+            >
+              <div className="flex items-center justify-between">
                 <Button
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    if (!isMessageLoading && !isRecording) startRecording();
-                  }}
-                  onMouseUp={handleRecordingStop}
-                  onMouseLeave={handleRecordingStop}
-                  onTouchStart={(e) => {
-                    e.preventDefault();
-                    if (!isMessageLoading && !isRecording) startRecording();
-                  }}
-                  onTouchEnd={handleRecordingStop}
-                  onTouchCancel={handleRecordingStop}
-                  variant={isRecording ? "destructive" : "outline"}
+                  variant="ghost"
                   size="icon"
-                  className="rounded-full flex-shrink-0 h-9 w-9"
-                  style={!isRecording ? {
-                    borderColor: 'hsl(var(--button-interactive-border))',
-                    color: 'hsl(var(--button-interactive))',
-                    backgroundColor: 'transparent',
-                  } : undefined}
-                  aria-label={isRecording ? t("stopRecording") as string : t("startRecording") as string}
-                  disabled={isMessageLoading}
+                  className="h-6 w-6 rounded-full"
+                  onClick={handlePreviousSuggestion}
                 >
-                  {isRecording ? (
-                    <AudioWaveform isActive={isRecording} audioLevel={audioLevel} />
-                  ) : (
-                    <Mic className="h-4 w-4" />
-                  )}
+                  <ChevronLeft className="h-4 w-4" />
                 </Button>
+                <div className="font-medium">{currentSuggestion}</div>
                 <Button
-                  onClick={handleSendMessage}
-                  disabled={inputValue.trim() === "" || isMessageLoading}
-                  variant="default"
+                  variant="ghost"
                   size="icon"
-                  className="rounded-full flex-shrink-0 h-9 w-9"
-                  style={{
-                    backgroundColor: 'hsl(var(--button-interactive))',
-                    color: 'hsl(var(--button-interactive-foreground))',
-                  }}
-                  aria-label={t("send") as string}
+                  className="h-6 w-6 rounded-full"
+                  onClick={handleNextSuggestion}
                 >
-                  <Send className="h-4 w-4" />
+                  <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>
-            <div className="text-xs text-muted-foreground text-center mt-1 flex items-center justify-center">
-              <Info className="h-3 w-3 mr-1 inline-block" />
-              {(t("disclaimerText") as string) || "Vistaar is AI and can make mistakes. Please verify sources."}
+          )}
+          <div
+            ref={inputContainerRef}
+            className={cn(
+              "bg-background border-t border-border transition-all duration-200",
+              isKeyboardVisible ? "shadow-lg border-b-0" : ""
+            )}
+          >
+            <div className="p-3">
+              <div className="flex items-center gap-2 bg-background rounded-lg border border-border p-2">
+                <Textarea
+                  ref={textareaRef}
+                  value={inputValue}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyPress}
+                  onFocus={() => {
+                    // Ensure positioning gets updated on focus
+                    if (window.visualViewport) {
+                      const kbHeight = Math.max(0, window.innerHeight - window.visualViewport.height);
+                      if (kbHeight > 100) {
+                        setIsKeyboardVisible(true);
+                        setKeyboardHeight(kbHeight);
+                      }
+                    }
+                  }}
+                  placeholder={t("inputPlaceholder") as string}
+                  className="flex-1 resize-none overflow-y-auto min-h-[32px] max-h-[80px] transition-all duration-100 focus:ring-2 focus-visible:ring-2"
+                  style={{
+                    ...mobileBaseStyle,
+                    overflow: inputValue && textareaRef.current?.scrollHeight > 80 ? 'auto' : 'hidden',
+                  }}
+                  disabled={isMessageLoading}
+                />
+                <div className="flex flex-shrink-0 gap-2">
+                  <Button
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      if (!isMessageLoading && !isRecording) startRecording();
+                    }}
+                    onMouseUp={handleRecordingStop}
+                    onMouseLeave={handleRecordingStop}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      if (!isMessageLoading && !isRecording) startRecording();
+                    }}
+                    onTouchEnd={handleRecordingStop}
+                    onTouchCancel={handleRecordingStop}
+                    variant={isRecording ? "destructive" : "outline"}
+                    size="icon"
+                    className="rounded-full flex-shrink-0 h-9 w-9"
+                    style={!isRecording ? {
+                      borderColor: 'hsl(var(--button-interactive-border))',
+                      color: 'hsl(var(--button-interactive))',
+                      backgroundColor: 'transparent',
+                    } : undefined}
+                    aria-label={isRecording ? t("stopRecording") as string : t("startRecording") as string}
+                    disabled={isMessageLoading}
+                  >
+                    {isRecording ? (
+                      <AudioWaveform isActive={isRecording} audioLevel={audioLevel} />
+                    ) : (
+                      <Mic className="h-4 w-4" />
+                    )}
+                  </Button>
+                  <Button
+                    onClick={handleSendMessage}
+                    disabled={inputValue.trim() === "" || isMessageLoading}
+                    variant="default"
+                    size="icon"
+                    className="rounded-full flex-shrink-0 h-9 w-9"
+                    style={{
+                      backgroundColor: 'hsl(var(--button-interactive))',
+                      color: 'hsl(var(--button-interactive-foreground))',
+                    }}
+                    aria-label={t("send") as string}
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <div className="text-xs text-muted-foreground text-center mt-1 flex items-center justify-center">
+                <Info className="h-3 w-3 mr-1 inline-block" />
+                {(t("disclaimerText") as string) || "Vistaar is AI and can make mistakes. Please verify sources."}
+              </div>
             </div>
           </div>
         </div>
-      </div>
       </>
     );
   };
@@ -1202,7 +1202,7 @@ export function ChatInterface() {
         <EmptyStateScreen setInputValue={setInputValue} />
       ) : (
         <ScrollArea className="flex-1 h-[calc(100vh-var(--header-height)-var(--input-height))]">
-          <div 
+          <div
             ref={(el) => {
               scrollContainerRef.current = el;
               // Also set viewportRef to the parent scroll viewport
@@ -1212,8 +1212,8 @@ export function ChatInterface() {
               }
             }}
             className={cn(
-              isMobile ? 
-                isKeyboardVisible ? "pb-24 md:pb-20" : "pb-32 md:pb-20 mt-20" 
+              isMobile ?
+                isKeyboardVisible ? "pb-24 md:pb-20" : "pb-32 md:pb-20 mt-20"
                 : "pb-24 md:pb-20",
               messages.length === 1 ? "min-h-[70vh]" : "" // Ensure single message has enough height
             )}
@@ -1254,7 +1254,7 @@ export function ChatInterface() {
           </div>
         </ScrollArea>
       )}
-      
+
       {/* Render different input containers for mobile vs desktop */}
       {isMobile ? (
         renderMobileInput()
@@ -1264,24 +1264,24 @@ export function ChatInterface() {
             <div className="p-4">
               <div className="relative max-w-2xl mx-auto">
                 {currentSuggestion && (
-                  <div 
+                  <div
                     className="absolute -top-16 left-4 right-4 bg-background/95 p-3 backdrop-blur rounded-lg text-sm z-10 cursor-pointer hover:border hover:border-primary transition-all"
                     onClick={() => handleSuggestionSelect(currentSuggestion)}
                   >
                     <div className="flex items-center justify-between">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-6 w-6 rounded-full" 
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 rounded-full"
                         onClick={handlePreviousSuggestion}
                       >
                         <ChevronLeft className="h-4 w-4" />
                       </Button>
                       <div className="font-medium">{currentSuggestion}</div>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-6 w-6 rounded-full" 
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 rounded-full"
                         onClick={handleNextSuggestion}
                       >
                         <ChevronRight className="h-4 w-4" />
@@ -1357,7 +1357,7 @@ export function ChatInterface() {
           </div>
         </div>
       )}
-      
+
       <FeedbackForm
         showFeedbackDialog={showFeedbackDialog}
         setShowFeedbackDialog={setShowFeedbackDialog}

@@ -20,9 +20,10 @@ export interface VoiceMessage {
 
 // WebSocket message types from server
 export interface WebSocketMessage {
-  type: "speech_start" | "speech_end" | "transcription" | "llm_chunk" | "playback_start" | "playback_end";
+  type: "speech_start" | "speech_end" | "transcription" | "thinking" | "llm_chunk" | "playback_start" | "playback_end" | "suggestions";
   text?: string;
   turn_id?: string;
+  suggestions?: string[];
 }
 
 // Audio chunk in playback queue
@@ -37,9 +38,12 @@ export interface UseVoiceWebSocketReturn {
   messages: VoiceMessage[];
   micState: MicState;
   statusText: string;
+  suggestions: string[];
+  isThinking: boolean;
   connect: () => void;
   disconnect: () => void;
   sendAudioChunk: (data: ArrayBuffer) => void;
+  sendTextMessage: (text: string) => void;
 }
 
 // Audio hook return type

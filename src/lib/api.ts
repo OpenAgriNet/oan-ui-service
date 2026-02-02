@@ -241,26 +241,71 @@ class ApiService {
 
         let fullResponse = '';
         const decoder = new TextDecoder();
+        let buffer = ''; // Buffer to accumulate partial chunks
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
           const chunk = decoder.decode(value, { stream: true });
-          try {
-            // Try to parse as JSON
-            const jsonData = JSON.parse(chunk);
-            if (jsonData.response) {
-              fullResponse = jsonData.response;
-              onStreamData(jsonData.response);
+          buffer += chunk;
+
+          console.log('[STREAM DEBUG] Raw chunk received:', chunk);
+
+          // Try to extract complete JSON objects from buffer
+          let startIndex = 0;
+          while (startIndex < buffer.length) {
+            // Find the start of a JSON object
+            const jsonStart = buffer.indexOf('{', startIndex);
+            if (jsonStart === -1) break;
+
+            // Try to find the matching closing brace
+            let braceCount = 0;
+            let jsonEnd = -1;
+            for (let i = jsonStart; i < buffer.length; i++) {
+              if (buffer[i] === '{') braceCount++;
+              if (buffer[i] === '}') braceCount--;
+              if (braceCount === 0) {
+                jsonEnd = i + 1;
+                break;
+              }
             }
-          } catch (e) {
-            // If not valid JSON, treat as text
-            fullResponse += chunk;
-            onStreamData(chunk);
+
+            if (jsonEnd === -1) {
+              // Incomplete JSON, wait for more data
+              buffer = buffer.substring(jsonStart);
+              break;
+            }
+
+            // Extract complete JSON object
+            const jsonStr = buffer.substring(jsonStart, jsonEnd);
+            try {
+              const jsonData = JSON.parse(jsonStr);
+              console.log('[STREAM DEBUG] Parsed JSON:', jsonData);
+
+              if (jsonData.status === 'streaming' && jsonData.response) {
+                fullResponse = jsonData.response;
+                onStreamData(jsonData.response);
+              } else if (jsonData.status === 'success') {
+                console.log('[STREAM DEBUG] Stream complete, sources:', jsonData.sources);
+              } else if (jsonData.status === 'error') {
+                console.error('[STREAM DEBUG] Error from backend:', jsonData.error);
+                throw new Error(jsonData.error || 'Backend error');
+              }
+            } catch (e) {
+              console.error('[STREAM DEBUG] JSON parse error:', e, 'String:', jsonStr);
+            }
+
+            startIndex = jsonEnd;
+          }
+
+          // Remove processed data from buffer
+          if (startIndex > 0) {
+            buffer = buffer.substring(startIndex);
           }
         }
 
+        console.log('[STREAM DEBUG] Final fullResponse:', fullResponse);
         return { response: fullResponse, status: 'success' };
       } else {
         // Regular non-streaming request
