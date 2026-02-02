@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: oan_frontend
+    ports:
+      - "8081:8081"
+    environment:
+      - VITE_TENANT=ATI
+      - VITE_API_URL=http://localhost:8000
+      - VITE_TRANSCRIBE_SERVICE_URL=http://localhost:8000
+      - VITE_VOICE_WS_URL=ws://localhost:8000/conv/ws
+      - VITE_ATI_USER_ID=00000000-0000-0000-0000-000000000000
+    restart: unless-stopped
+    networks:
+      - oan-network
+
+networks:
+  oan-network:
+    driver: bridge

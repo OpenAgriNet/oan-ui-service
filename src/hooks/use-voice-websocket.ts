@@ -24,6 +24,8 @@ export const useVoiceWebSocket = (
   ]);
   const [micState, setMicState] = useState<MicState>('idle');
   const [statusText, setStatusText] = useState('Click to start');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [isThinking, setIsThinking] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const currentBotTurnIdRef = useRef<string | null>(null);
@@ -70,14 +72,97 @@ export const useVoiceWebSocket = (
           break;
 
         case 'transcription':
-          // User's speech transcribed
+          // User's speech transcribed - Handle Streaming updates
           if (data.text) {
-            addMessage(data.text, 'user');
+            setMessages((prev) => {
+              const lastMsg = prev[prev.length - 1];
+
+              // If last message is user, update it (Streaming)
+              if (lastMsg && lastMsg.type === 'user') {
+                // If it's a FINAL segment (TextFrame), append it.
+                // If it's INTERIM (TranscriptionFrame), replace the *last part*?
+                // Actually, simplified logic for now:
+                // If backend sends "is_final": true, it means a committed segment.
+                // If "is_final": false, it's an update to the current segment.
+
+                // Challenge: Azure sends final segments sequentially. 
+                // "What is" (Final) -> "the price" (Final).
+                // So we should APPEND if it's new content?
+
+                // Current naive approach matches user request "First line itself should get updated":
+                // We always update the last bubble.
+
+                // BUT: Azure sometimes re-sends full text or partials?
+                // If we just Append, we might duplicate?
+                // Let's rely on the text content.
+
+                // If the new text STARTS with the old text, replace it (Interim update).
+                // If it doesn't, allow append?
+
+                // Actually, simplest Robust logic for "Stream":
+                // On 'speech_start', we ensure a user bubble exists (or create one).
+                // On 'transcription', we APPEND if it's a new Final segment, or UPDATE if it's Interim.
+
+                // BUT without `confirmedText` state tracking, it's hard.
+                // Let's just APPEND with space if previous text doesn't end with it.
+
+                // WAIT. User complaint: "came in 4 lines".
+                // This means 4 separate messages were added. 
+                // Because code was: `addMessage(...)`.
+
+                // NOW we use `setMessages` and update `prev[last]`.
+                // This guarantees ONE bubble.
+
+                // Issue: "Text Duplication" inside bubble?
+                // "What is the price" + "What is the price of" -> "What is the price What is the price of".
+
+                // If data.is_final is true, we assume it's a NEW segment to append?
+                // Or replacement?
+                // Backend Notifier sends `frame.text`.
+
+                // Let's assume Azure sends incremental FINAL segments.
+                // Frame 1: "What is"
+                // Frame 2: "the price"
+                // So we should APPEND.
+
+                return [
+                  ...prev.slice(0, -1),
+                  { ...lastMsg, text: data.text }
+                ];
+              } else {
+                // No user message (or new turn), add new
+                return [...prev, {
+                  type: 'user',
+                  text: data.text
+                }];
+              }
+            });
           }
+          break;
+
+        case 'thinking':
+          // LLM is thinking/processing
+          console.log('🔵 Received thinking message, showing indicator');
+          setIsThinking(true);
+          setMicState('processing');
+          // Don't update statusText - keep it as "Processing..." from transcription
+          // The three-dot loader will show the thinking state visually
           break;
 
         case 'llm_chunk':
           // Streaming AI response text
+          // Clear thinking state when first chunk arrives
+          console.log('🔵 Received llm_chunk, clearing thinking indicator');
+          setIsThinking(false);
+
+          // Also reset mic state to active when response starts
+          // This allows user to speak again immediately
+          // Also reset mic state to active when response starts
+          // This allows user to speak again immediately
+          // Force reset regardless of previous state to prevent stuck UI
+          setMicState('active');
+          setStatusText('Listening...');
+
           if (!currentBotTurnIdRef.current || currentBotTurnIdRef.current !== data.turn_id) {
             // New turn - add empty bot message
             addMessage('', 'bot');
@@ -85,6 +170,14 @@ export const useVoiceWebSocket = (
           }
           if (data.text) {
             appendToBotMessage(data.text);
+          }
+          break;
+
+        case 'suggestions':
+          // Suggestions from parallel agent
+          if (data.suggestions && data.suggestions.length > 0) {
+            console.log('Received suggestions:', data.suggestions);
+            setSuggestions(data.suggestions);
           }
           break;
 
@@ -151,6 +244,7 @@ export const useVoiceWebSocket = (
       setIsConnected(false);
       setMicState('idle');
       setStatusText('Click to start');
+      setIsThinking(false);
       wsRef.current = null;
     };
 
@@ -159,6 +253,7 @@ export const useVoiceWebSocket = (
       setStatusText('Connection failed. Check backend server.');
       setIsConnected(false);
       setMicState('idle');
+      setIsThinking(false);
     };
 
     wsRef.current = ws;
@@ -175,6 +270,7 @@ export const useVoiceWebSocket = (
     setIsConnected(false);
     setMicState('idle');
     setStatusText('Click to start');
+    setIsThinking(false);
   }, []);
 
   /**
@@ -183,8 +279,29 @@ export const useVoiceWebSocket = (
   const sendAudioChunk = useCallback((data: ArrayBuffer) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(data);
+      // Log every 20th chunk to avoid spamming console
+      if (Math.random() < 0.05) {
+        console.log(`🎙️ Sent audio chunk: ${data.byteLength} bytes`);
+      }
+    } else {
+      // Log if WebSocket isn't ready
+      console.warn('⚠️ WebSocket not ready for audio, state:', wsRef.current?.readyState);
     }
   }, []);
+
+  /**
+   * Sends text message to server (for clicking suggestions)
+   */
+  const sendTextMessage = useCallback((text: string) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      // Add user message to chat
+      addMessage(text, 'user');
+      // Clear suggestions when user sends a message
+      setSuggestions([]);
+      // Send as JSON message
+      wsRef.current.send(JSON.stringify({ type: 'text', text }));
+    }
+  }, [addMessage]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -208,8 +325,11 @@ export const useVoiceWebSocket = (
     messages,
     micState,
     statusText,
+    suggestions,
+    isThinking,
     connect,
     disconnect,
     sendAudioChunk,
+    sendTextMessage,
   };
 };

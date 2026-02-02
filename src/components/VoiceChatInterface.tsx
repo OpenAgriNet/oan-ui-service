@@ -35,8 +35,13 @@ export function VoiceChatInterface({ onModeChange }: VoiceChatInterfaceProps) {
   } = useVoiceAudio();
 
   // WebSocket hook
-  const { isConnected, messages, micState, statusText, connect, disconnect, sendAudioChunk } =
+  const { isConnected, messages, micState, statusText, suggestions, isThinking, connect, disconnect, sendAudioChunk, sendTextMessage } =
     useVoiceWebSocket(language, playAudio, clearAudioQueue);
+
+  // Debug: Log thinking state changes
+  useEffect(() => {
+    console.log('🔵 VoiceChat: isThinking changed to:', isThinking);
+  }, [isThinking]);
 
   // Auto-scroll messages
   useEffect(() => {
@@ -208,6 +213,22 @@ export function VoiceChatInterface({ onModeChange }: VoiceChatInterfaceProps) {
                   hideActions={true}
                 />
               ))}
+              {/* Show thinking indicator when LLM is processing */}
+              {isThinking && (
+                <ChatMessage
+                  key="thinking-indicator"
+                  message=""
+                  isUser={false}
+                  timestamp={new Date()}
+                  messageId="thinking-indicator"
+                  isLoading={true}
+                  isStreaming={false}
+                  isFeedbackMessage={false}
+                  questionText=""
+                  responseText=""
+                  hideActions={true}
+                />
+              )}
               <div ref={messagesEndRef} className="h-8" />
             </div>
           </div>
@@ -217,6 +238,24 @@ export function VoiceChatInterface({ onModeChange }: VoiceChatInterfaceProps) {
       {/* Controls Footer */}
       <footer className="flex-shrink-0 bg-background border-t border-border p-4 pb-6 z-20">
         <div className="max-w-3xl mx-auto">
+          {/* Suggestions */}
+          {suggestions.length > 0 && (
+            <div className="mb-4 px-2">
+              <p className="text-xs text-muted-foreground mb-2 font-medium">Suggestions:</p>
+              <div className="flex flex-wrap gap-2">
+                {suggestions.map((suggestion, idx) => (
+                  <button
+                    key={`suggestion-${idx}`}
+                    onClick={() => sendTextMessage(suggestion)}
+                    className="px-3 py-2 text-sm bg-primary/10 hover:bg-primary/20 text-primary rounded-lg border border-primary/20 transition-colors"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="bg-muted/50 border border-border rounded-xl p-3 shadow-sm">
             {/* Status Text */}
             <div className="text-center mb-3">
