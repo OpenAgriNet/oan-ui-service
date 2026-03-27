@@ -71,7 +71,7 @@
   "dislikeMessage": "संदेश नहीं पसंद करें",
   "settings": "सेटिंग्ज",
   "theme": "थीम",
-  "toast": { 
+  "toast": {
     "locationPermissionDenied": {
       "title": "स्थान अनुमति अस्वीकृत",
       "description": "स्थान पहुंच अस्वीकृत। मौसम संबंधित सुविधाएं उपलब्ध नहीं होंगी।"

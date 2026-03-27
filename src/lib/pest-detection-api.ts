@@ -28,8 +28,16 @@ export interface PredictionResult {
 }
 
 export interface AdvisoryResult {
+  disease_pest?: string;
+  disease_pest_mr?: string;
+  disease_pest_hi?: string;
   preventive_measures: string;
+  preventive_measures_mr?: string;
+  preventive_measures_hi?: string;
   curative_measures: string;
+  curative_measures_mr?: string;
+  curative_measures_hi?: string;
+  note?: string;
   [key: string]: unknown;
 }
 
@@ -50,6 +58,40 @@ interface PestCropApiEnvelope {
 
 const PEST_API_BASE = 'https://stage-farmers-app-api.mahapocra.gov.in';
 const PREDICT_API_BASE = 'https://ndksp-tih.mahapocra.gov.in';
+
+const asArray = <T>(payload: unknown): T[] => {
+  if (Array.isArray(payload)) return payload as T[];
+  if (payload && typeof payload === 'object' && Array.isArray((payload as { data?: unknown }).data)) {
+    return (payload as { data: T[] }).data;
+  }
+  return [];
+};
+
+const toNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+};
+
+const toString = (value: unknown): string | undefined => {
+  return typeof value === 'string' ? value : undefined;
+};
+
+const normalizeCrop = (item: CropApiItem): CropItem | null => {
+  const cropId = toNumber(item.crop_id ?? item.id);
+  const cropName = toString(item.crop_name ?? item.name);
+  if (cropId === undefined || !cropName) return null;
+
+  return {
+    crop_id: cropId,
+    crop_name: cropName,
+    crop_name_mr: toString(item.crop_name_mr ?? item.name_mr),
+    crop_name_hi: toString(item.crop_name_hi ?? item.name_hi),
+  };
+};
 
 // ---- Fallback Crops (used when API is unavailable) ----
 
@@ -144,7 +186,36 @@ export async function getAdvisory(pdId: string): Promise<AdvisoryResult> {
     `${PEST_API_BASE}/pestdetectionServices/crop_pd_advisory`,
     formData
   );
-  return response.data;
+  const payload = response.data;
+  const fallback: AdvisoryResult = {
+    preventive_measures: "",
+    curative_measures: "",
+  };
+
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+    const directPayload = payload as Partial<AdvisoryResult>;
+    if (
+      typeof directPayload.preventive_measures === 'string' ||
+      typeof directPayload.curative_measures === 'string'
+    ) {
+      return {
+        ...directPayload,
+        preventive_measures: toString(directPayload.preventive_measures) ?? "",
+        curative_measures: toString(directPayload.curative_measures) ?? "",
+      };
+    }
+  }
+
+  const advisoryList = asArray<Partial<AdvisoryResult>>(payload);
+  const firstAdvisory = advisoryList[0];
+
+  if (!firstAdvisory) return fallback;
+
+  return {
+    ...firstAdvisory,
+    preventive_measures: toString(firstAdvisory.preventive_measures) ?? "",
+    curative_measures: toString(firstAdvisory.curative_measures) ?? "",
+  };
 }
 
 /**
