@@ -28,22 +28,28 @@ export interface PredictionResult {
 }
 
 export interface AdvisoryResult {
+  disease_pest?: string;
+  disease_pest_mr?: string;
+  disease_pest_hi?: string;
   preventive_measures: string;
+  preventive_measures_mr?: string;
+  preventive_measures_hi?: string;
   curative_measures: string;
+  curative_measures_mr?: string;
+  curative_measures_hi?: string;
+  note?: string;
   [key: string]: unknown;
 }
 
-interface PestCropApiItem {
-  id: number;
-  name: string;
+interface CropApiItem {
+  id?: number | string;
+  crop_id?: number | string;
+  name?: string;
+  crop_name?: string;
   name_mr?: string;
+  crop_name_mr?: string;
   name_hi?: string;
-}
-
-interface PestCropApiEnvelope {
-  status: number;
-  response: string;
-  data: PestCropApiItem[];
+  crop_name_hi?: string;
 }
 
 // ---- API Base URLs ----
@@ -51,26 +57,61 @@ interface PestCropApiEnvelope {
 const PEST_API_BASE = 'https://stage-farmers-app-api.mahapocra.gov.in';
 const PREDICT_API_BASE = 'https://ndksp-tih.mahapocra.gov.in';
 
+const asArray = <T>(payload: unknown): T[] => {
+  if (Array.isArray(payload)) return payload as T[];
+  if (payload && typeof payload === 'object' && Array.isArray((payload as { data?: unknown }).data)) {
+    return (payload as { data: T[] }).data;
+  }
+  return [];
+};
+
+const toNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+};
+
+const toString = (value: unknown): string | undefined => {
+  return typeof value === 'string' ? value : undefined;
+};
+
+const normalizeCrop = (item: CropApiItem): CropItem | null => {
+  const cropId = toNumber(item.crop_id ?? item.id);
+  const cropName = toString(item.crop_name ?? item.name);
+  if (cropId === undefined || !cropName) return null;
+
+  return {
+    crop_id: cropId,
+    crop_name: cropName,
+    crop_name_mr: toString(item.crop_name_mr ?? item.name_mr),
+    crop_name_hi: toString(item.crop_name_hi ?? item.name_hi),
+  };
+};
+
 // ---- Fallback Crops (used when API is unavailable) ----
 
 export const FALLBACK_CROPS: CropItem[] = [
-  { crop_id: 67, crop_name: 'Kharif Maize' },
-  { crop_id: 86, crop_name: 'Paddy' },
-  { crop_id: 70, crop_name: 'Wheat' },
-  { crop_id: 68, crop_name: 'Kharif Sorghum' },
-  { crop_id: 58, crop_name: 'Gram' },
-  { crop_id: 33, crop_name: 'Pigeon pea (Tur)' },
-  { crop_id: 74, crop_name: 'Groundnut' },
-  { crop_id: 30, crop_name: 'Soybean' },
-  { crop_id: 97, crop_name: 'Mustard' },
-  { crop_id: 8, crop_name: 'Sugarcane (Adsali)' },
-  { crop_id: 25, crop_name: 'Cotton' },
-  { crop_id: 7, crop_name: 'Potato' },
-  { crop_id: 39, crop_name: 'Veg- Onion' },
-  { crop_id: 42, crop_name: 'Veg- Tomato ' },
-  { crop_id: 3, crop_name: 'Brinjal' },
-  { crop_id: 183, crop_name: 'Apple' },
-  { crop_id: 48, crop_name: 'Mango' },
+  { crop_id: 1, crop_name: 'Maize' },
+  { crop_id: 2, crop_name: 'Paddy' },
+  { crop_id: 3, crop_name: 'Wheat' },
+  { crop_id: 4, crop_name: 'Sorghum' },
+  { crop_id: 5, crop_name: 'Gram' },
+  { crop_id: 6, crop_name: 'Pigeon pea (Tur)' },
+  { crop_id: 7, crop_name: 'Groundnut' },
+  { crop_id: 8, crop_name: 'Soybean' },
+  { crop_id: 9, crop_name: 'Mustard' },
+  { crop_id: 10, crop_name: 'Sugarcane' },
+  { crop_id: 11, crop_name: 'Cotton' },
+  { crop_id: 12, crop_name: 'Potato' },
+  { crop_id: 13, crop_name: 'Onion' },
+  { crop_id: 14, crop_name: 'Tomato' },
+  { crop_id: 15, crop_name: 'Brinjal' },
+  { crop_id: 16, crop_name: 'Grapes' },
+  { crop_id: 17, crop_name: 'Apple' },
+  { crop_id: 18, crop_name: 'Mango' },
 ];
 
 // ---- Service Functions ----
@@ -82,21 +123,9 @@ export async function getCrops(): Promise<CropItem[]> {
   const response = await axios.get(
     `${PEST_API_BASE}/pestdetectionServices/get-crops-for-pest-detection`
   );
-
-  // Supports both legacy array response and current envelope response.
-  const payload = response.data as PestCropApiEnvelope | PestCropApiItem[] | null | undefined;
-  const crops = Array.isArray(payload)
-    ? payload
-    : Array.isArray(payload?.data)
-      ? payload.data
-      : [];
-
-  return crops.map((crop) => ({
-    crop_id: crop.id,
-    crop_name: crop.name,
-    crop_name_mr: crop.name_mr,
-    crop_name_hi: crop.name_hi,
-  }));
+  return asArray<CropApiItem>(response.data)
+    .map(normalizeCrop)
+    .filter((crop): crop is CropItem => crop !== null);
 }
 
 /**
@@ -109,28 +138,17 @@ export async function predictDisease(
   cropId: string
 ): Promise<PredictionResult> {
   const formData = new FormData();
-  formData.append('crop_type', cropType.trim());
+  formData.append('crop_type', cropType);
   formData.append('sowing_date', sowingDate);
-  // Explicit filename helps backends that infer file type from multipart filename.
-  formData.append('image', image, image.name || 'crop-image.jpg');
-  formData.append('crop_id', cropId.trim());
+  formData.append('image', image);
+  formData.append('crop_id', cropId);
 
-  try {
-    // Let the browser set multipart boundary automatically.
-    const response = await axios.post(`${PREDICT_API_BASE}/api/v1/predict`, formData);
-    return response.data;
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      const backendMessage =
-        typeof error.response?.data === 'string'
-          ? error.response.data
-          : JSON.stringify(error.response?.data ?? {});
-      throw new Error(
-        `Predict API failed (${error.response?.status ?? 'unknown'}): ${backendMessage}`
-      );
-    }
-    throw error;
-  }
+  const response = await axios.post(
+    `${PREDICT_API_BASE}/api/v1/predict`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return response.data;
 }
 
 /**
@@ -142,9 +160,39 @@ export async function getAdvisory(pdId: string): Promise<AdvisoryResult> {
 
   const response = await axios.post(
     `${PEST_API_BASE}/pestdetectionServices/crop_pd_advisory`,
-    formData
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
   );
-  return response.data;
+  const payload = response.data;
+  const fallback: AdvisoryResult = {
+    preventive_measures: "",
+    curative_measures: "",
+  };
+
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+    const directPayload = payload as Partial<AdvisoryResult>;
+    if (
+      typeof directPayload.preventive_measures === 'string' ||
+      typeof directPayload.curative_measures === 'string'
+    ) {
+      return {
+        ...directPayload,
+        preventive_measures: toString(directPayload.preventive_measures) ?? "",
+        curative_measures: toString(directPayload.curative_measures) ?? "",
+      };
+    }
+  }
+
+  const advisoryList = asArray<Partial<AdvisoryResult>>(payload);
+  const firstAdvisory = advisoryList[0];
+
+  if (!firstAdvisory) return fallback;
+
+  return {
+    ...firstAdvisory,
+    preventive_measures: toString(firstAdvisory.preventive_measures) ?? "",
+    curative_measures: toString(firstAdvisory.curative_measures) ?? "",
+  };
 }
 
 /**
@@ -170,7 +218,8 @@ export async function storeResponse(
 
   const res = await axios.post(
     `${PEST_API_BASE}/pestdetectionServices/store-response-against-crop-image`,
-    formData
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
   );
   return res.data;
 }

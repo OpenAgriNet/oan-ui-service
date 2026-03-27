@@ -25,7 +25,13 @@ import { useTts } from "@/hooks/use-tts";
 import { FeedbackForm } from "@/components/FeedbackForm";
 import { useAuth } from "@/contexts/AuthContext";
 import { PestDetectionDialog } from "@/components/PestDetectionDialog";
-import { predictDisease, getAdvisory, storeResponse, FALLBACK_CROPS } from "@/lib/pest-detection-api";
+import {
+  predictDisease,
+  getAdvisory,
+  storeResponse,
+  FALLBACK_CROPS,
+  type AdvisoryResult,
+} from "@/lib/pest-detection-api";
 
 interface Message {
   id: string;
@@ -39,7 +45,6 @@ interface Message {
   questionText?: string;
   isErrorMessage?: boolean;
   errorTranslationKey?: string;
-  responseLanguage?: string;
   imageUrl?: string;
 }
 
@@ -126,9 +131,6 @@ export function ChatInterface() {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const inputContainerRef = useRef<HTMLDivElement>(null);
 
-  // Guest limit state
-  const [guestLimitReached, setGuestLimitReached] = useState(false);
-
   const { stopAudio } = useTts();
 
   // Add this effect to update the input height CSS variable
@@ -177,29 +179,10 @@ export function ChatInterface() {
     );
   };
 
-  // Helper to get telemetry uid from the JWT user id only.
+  // Helper to get telemetry uid - returns "guest" for guest users
   const getTelemetryUid = useCallback(() => {
-    return user?.telemetryUsername || "";
+    return user?.is_guest_user ? "guest" : (user?.username || "default-username");
   }, [user]);
-
-  // Notify host app (iframe parent) when guest limit is reached
-  const notifyGuestLimitReached = useCallback((questionsAsked: number) => {
-    try {
-      window.parent.postMessage(
-        {
-          type: 'questions-limit-reached',
-          timestamp: new Date().toISOString(),
-          data: {
-            questionsAsked,
-            limit: environment.guestUserLimit,
-          },
-        },
-        '*'
-      );
-    } catch (e) {
-      console.error('postMessage failed:', e);
-    }
-  }, []);
 
   // Create a session ID
   const createSession = useCallback(() => {
@@ -325,8 +308,7 @@ export function ChatInterface() {
     if (user?.is_guest_user) {
       const guestCount = parseInt(getCookie('guest_question_count') || '0');
       if (guestCount >= environment.guestUserLimit) {
-        setGuestLimitReached(true);
-        notifyGuestLimitReached(guestCount);
+        window.location.href = '/error?reason=guest_limit';
         return;
       }
     }
@@ -381,10 +363,9 @@ export function ChatInterface() {
   const sendMessageToApi = async (text: string, loadingMessageId: string) => {
     // Determine target and source language
     const targetLang = language;
-    // Use the selected language directly as source language
-    // (detectIndianLanguage disabled — misdetects bhb as hi since both share Devanagari)
-    // const detectedLanguage = detectIndianLanguage(text);
-    const sourceLang: string = language;
+    let sourceLang = "en"; // Default source language
+    const detectedLanguage = detectIndianLanguage(text);
+    sourceLang = detectedLanguage.code;
     console.log(sourceLang);
     const questionId = uuidv4();
     startTelemetry(sessionId, { preferred_username: getTelemetryUid(), email: user?.email || "default-email" });
@@ -402,8 +383,7 @@ export function ChatInterface() {
         isLoading: false,
         isStreaming: true,
         questionId,
-        questionText: text,
-        responseLanguage: targetLang
+        questionText: text
       });
       
       const response = await apiService.sendUserQuery(
@@ -419,8 +399,7 @@ export function ChatInterface() {
             text: streamingText,
             isStreaming: true,
             questionId,
-            questionText: text,
-            responseLanguage: targetLang
+            questionText: text
           });
         }
       ) as ChatResponse;
@@ -431,18 +410,13 @@ export function ChatInterface() {
           text: response.response,
           isStreaming: false,
           questionId,
-          questionText: text,
-          responseLanguage: targetLang
+          questionText: text
         });
         
         if (user?.is_guest_user) {
           const guestCount = parseInt(getCookie('guest_question_count') || '0');
           const newCount = guestCount + 1;
           setCookie('guest_question_count', newCount.toString(), 7);
-          if (newCount >= environment.guestUserLimit) {
-            setGuestLimitReached(true);
-            notifyGuestLimitReached(newCount);
-          }
         }
         
         startTelemetry(sessionId, { preferred_username: getTelemetryUid(), email: user?.email || "default-email" });
@@ -461,7 +435,7 @@ export function ChatInterface() {
           errorTranslationKey: 'toast.apiEmptyResponse.description',
           isLoading: false,
         });
-        startTelemetry(sessionId, { preferred_username: getTelemetryUid(), email: user?.email || "default-email" });
+        startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
         logErrorEvent(questionId, sessionId, "Empty response from API");
         endTelemetry();
       }
@@ -524,8 +498,7 @@ export function ChatInterface() {
           }, 10);
         },
         sessionId,
-        toast,
-        language
+        toast
       );
       
       // Set timeout to stop recording after maxRecordingDuration
@@ -567,11 +540,36 @@ export function ChatInterface() {
   };
 
   // Pest detection submit handler
+  const getLocalizedFieldValue = (
+    values: { en?: string; mr?: string; hi?: string },
+    fallback = ""
+  ): string => {
+    const preferredValues = language === "mr"
+      ? [values.mr, values.en, values.hi]
+      : language === "hi"
+        ? [values.hi, values.en, values.mr]
+        : [values.en, values.mr, values.hi];
+
+    const selected = preferredValues.find(
+      (value) => typeof value === "string" && value.trim().length > 0
+    );
+
+    return selected || fallback;
+  };
+
+  const formatAdvisoryText = (value: string): string => {
+    const normalized = value.replace(/\r\n/g, "\n").trim();
+    if (!normalized) return "";
+    // Keep numbered advisory points readable in markdown.
+    return normalized.replace(/\n(?=\d+\.)/g, "\n\n");
+  };
+
   const handlePestDetectionSubmit = async (
     cropId: string,
     cropName: string,
     sowingDate: string,
-    image: File
+    image: File,
+    cropNameEnglish?: string
   ) => {
     setIsPestDetectionSubmitting(true);
     setShowPestDetectionDialog(false);
@@ -580,26 +578,16 @@ export function ChatInterface() {
     // Create a URL for the image to display in chat
     const imageObjectUrl = URL.createObjectURL(image);
 
-    // Resolve backend-valid crop values even when fallback/translated ids are stale.
-    const normalizeCropName = (name: string) =>
-      name.toLowerCase().replace(/\s+/g, " ").trim();
-    const selectedById = FALLBACK_CROPS.find((c) => String(c.crop_id) === cropId);
-    const selectedByName = FALLBACK_CROPS.find(
-      (c) =>
-        normalizeCropName(c.crop_name) === normalizeCropName(cropName) ||
-        normalizeCropName(c.crop_name).includes(normalizeCropName(cropName)) ||
-        normalizeCropName(cropName).includes(normalizeCropName(c.crop_name))
-    );
-    const resolvedCrop = selectedById || selectedByName;
-    const cropTypeForApi = resolvedCrop ? resolvedCrop.crop_name : cropName;
-    const cropIdForApi = resolvedCrop ? String(resolvedCrop.crop_id) : cropId;
+    // Resolve English crop name for the API (API requires English names)
+    const englishCrop = FALLBACK_CROPS.find((c) => String(c.crop_id) === cropId);
+    const cropTypeForApi = cropNameEnglish || (englishCrop ? englishCrop.crop_name : cropName);
 
     // Add user message with image, crop name and sowing date (right side)
     if (!inputPositioned) {
       setInputPositioned(true);
     }
     addMessage(
-      `🌿 **${cropName}**\n📅 ${sowingDate}`,
+      `**${cropName}**\n${sowingDate}`,
       true,
       { imageUrl: imageObjectUrl }
     );
@@ -610,11 +598,16 @@ export function ChatInterface() {
 
     try {
       // Step 1: Predict (always use English crop name for API)
-      const prediction = await predictDisease(cropTypeForApi, sowingDate, image, cropIdForApi);
+      const prediction = await predictDisease(cropTypeForApi, sowingDate, image, cropId);
 
       if (!prediction.success || !prediction.data?.predictions?.length) {
+        const resultLabel = (t("pestDetection.resultLabel") as string) || "Pest/Disease";
+        const unknownDisease = (t("pestDetection.unknownDisease") as string) || "Unknown Disease";
+        const unknownDiseaseMessage = (t("pestDetection.unknownDiseaseMessage", { crop: cropName }) as string)
+          || `The system could not identify a specific disease for ${cropName}. Please try again with a clearer image or consult a local agriculture officer.`;
+
         updateMessage(loadingMessageId, {
-          text: `### 🌿 Pest/Disease: Unknown Disease\n\nThe system could not identify a specific disease for **${cropName}**.\nPlease try again with a clearer image or consult a local agriculture officer.`,
+          text: `### ${resultLabel}: ${unknownDisease}\n\n${unknownDiseaseMessage}`,
           isLoading: false,
           isStreaming: false,
         });
@@ -622,7 +615,7 @@ export function ChatInterface() {
         try {
           await storeResponse(
             image,
-            cropIdForApi,
+            cropId,
             sowingDate,
             false,
             JSON.stringify(prediction),
@@ -639,11 +632,12 @@ export function ChatInterface() {
       const diseaseId = topPrediction.disease_id;
       const diseaseType = topPrediction.disease_type;
       const confidence = (topPrediction.confidence_score * 100).toFixed(1);
+      const noInformation = (t("pestDetection.noInformation") as string) || "No information available.";
 
       // Step 2: Get advisory
-      let advisory: { preventive_measures: string; curative_measures: string } = {
-        preventive_measures: "No information available.",
-        curative_measures: "No information available.",
+      let advisory: AdvisoryResult = {
+        preventive_measures: noInformation,
+        curative_measures: noInformation,
       };
       try {
         advisory = await getAdvisory(diseaseId);
@@ -651,11 +645,42 @@ export function ChatInterface() {
         console.error("Failed to get advisory:", advErr);
       }
 
+      const diseaseTypeText = getLocalizedFieldValue(
+        {
+          en: advisory.disease_pest || diseaseType,
+          mr: advisory.disease_pest_mr,
+          hi: advisory.disease_pest_hi,
+        },
+        diseaseType
+      );
+
+      const preventiveMeasures = formatAdvisoryText(
+        getLocalizedFieldValue(
+          {
+            en: advisory.preventive_measures,
+            mr: advisory.preventive_measures_mr,
+            hi: advisory.preventive_measures_hi,
+          },
+          noInformation
+        )
+      ) || noInformation;
+
+      const curativeMeasures = formatAdvisoryText(
+        getLocalizedFieldValue(
+          {
+            en: advisory.curative_measures,
+            mr: advisory.curative_measures_mr,
+            hi: advisory.curative_measures_hi,
+          },
+          noInformation
+        )
+      ) || noInformation;
+
       // Step 3: Store response
       try {
         await storeResponse(
           image,
-          cropIdForApi,
+          cropId,
           sowingDate,
           true,
           JSON.stringify(prediction),
@@ -668,17 +693,17 @@ export function ChatInterface() {
 
       // Format the result as markdown
       const resultMarkdown = [
-        `### 🌿 Pest/Disease: **${diseaseType}**`,
-        `**Confidence:** ${confidence}%`,
-        `**Crop:** ${cropName} | **Sowing Date:** ${sowingDate}`,
+        `### ${(t("pestDetection.resultLabel") as string) || "Pest/Disease"}: **${diseaseTypeText}**`,
+        `**${(t("pestDetection.confidenceLabel") as string) || "Confidence"}:** ${confidence}%`,
+        `**${(t("pestDetection.cropLabel") as string) || "Crop"}:** ${cropName} | **${(t("pestDetection.sowingDateLabel") as string) || "Sowing Date"}:** ${sowingDate}`,
         ``,
         `---`,
         ``,
-        `#### 🛡️ Preventive Measures`,
-        advisory.preventive_measures,
+        `#### ${(t("pestDetection.preventiveMeasuresLabel") as string) || "Preventive Measures"}`,
+        preventiveMeasures,
         ``,
-        `#### 💊 Curative Measures`,
-        advisory.curative_measures,
+        `#### ${(t("pestDetection.curativeMeasuresLabel") as string) || "Curative Measures"}`,
+        curativeMeasures,
       ].join("\n");
 
       // Update the loading message with the final result
@@ -867,8 +892,7 @@ export function ChatInterface() {
           setFeedbackText(prevValue => prevValue + (prevValue ? " " : "") + transcribedText);
         },
         sessionId,
-        toast,
-        language
+        toast
       );
       
       // Set timeout to stop recording after maxRecordingDuration
@@ -922,10 +946,9 @@ export function ChatInterface() {
     if (!user?.is_guest_user) return;
     const guestCount = parseInt(getCookie('guest_question_count') || '0');
     if (guestCount >= environment.guestUserLimit) {
-      setGuestLimitReached(true);
-      notifyGuestLimitReached(guestCount);
+      window.location.href = '/error?reason=guest_limit';
     }
-  }, [user, notifyGuestLimitReached]);
+  }, [user]);
 
   useEffect(() => {
     // Don't auto-scroll when keyboard is open on mobile
@@ -1151,33 +1174,6 @@ export function ChatInterface() {
 
   return (
     <div className="flex flex-col h-full relative p-[0px!important]">
-      {/* Guest limit reached overlay — covers full viewport so nothing bleeds through */}
-      {guestLimitReached && (
-        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-background px-6 text-center">
-          <div className="rounded-2xl border border-border bg-card p-8 shadow-lg max-w-sm w-full">
-            <div className="text-4xl mb-4">🌾</div>
-            <h2 className="text-xl font-bold text-primary mb-2">
-              {(t("guestLimitTitle") as string) || "Free limit reached"}
-            </h2>
-            <p className="text-muted-foreground text-sm mb-6">
-              {(t("guestLimitDescription") as string) ||
-                "You have used all 10 free questions. Please log in to continue."}
-            </p>
-            <Button
-              className="w-full"
-              onClick={() => {
-                window.parent.postMessage(
-                  { type: 'login-requested', timestamp: new Date().toISOString() },
-                  '*'
-                );
-              }}
-            >
-              {(t("loginToContinue") as string) || "Login / Register"}
-            </Button>
-          </div>
-        </div>
-      )}
-
       {messages.length === 0 ? (
         <EmptyStateScreen setInputValue={setInputValue} />
       ) : (
@@ -1226,7 +1222,6 @@ export function ChatInterface() {
                   responseText={message.text}
                   isErrorMessage={message.isErrorMessage}
                   errorTranslationKey={message.errorTranslationKey}
-                  responseLanguage={message.responseLanguage}
                   imageUrl={message.imageUrl}
                 />
               ))}
