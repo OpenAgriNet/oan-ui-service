@@ -1,9 +1,9 @@
 // --- V3 Telemetry Specification Alignment ---
+import { getStoredAuthToken } from './authSession';
 
 // Declare V3 Telemetry methods required for this implementation
 // Note: Implementations for all methods are assumed to exist in the global Telemetry object.
 declare let Telemetry: any;
-declare let AuthTokenGenerate: any;
 
 // Store comprehensive telemetry data
 const telemetryData: {
@@ -113,8 +113,7 @@ const getHostUrl = (): string => {
 };
 
 export const startTelemetry = (sessionId: string, userDetailsObj: { preferred_username: string; email: string }) => {
-    const key = "gyte5565fdbgbngfnhgmnhmjgm,jm,";
-    const secret = "gnjhgjugkk";
+    const telemetryAuthToken = getStoredAuthToken() ?? undefined;
     const config = {
       pdata: {
         id: "MahaVistaar",
@@ -125,14 +124,12 @@ export const startTelemetry = (sessionId: string, userDetailsObj: { preferred_us
       sid: sessionId,
       uid: userDetailsObj['preferred_username'] || "DEFAULT-USER",
       did: userDetailsObj['email'] || "DEFAULT-USER",
-      authtoken: "",
+      authtoken: telemetryAuthToken,
       host: "/observability-service",
     }
 
     const startEdata = {};
     const options = {};
-    const token = AuthTokenGenerate.generate(key, secret);
-    config.authtoken = token;
     Telemetry.start(config, "content_id", "contetn_ver", startEdata, options);
   };
 
@@ -327,8 +324,6 @@ export const logFeedbackEvent = (questionId: string, sessionId: string, feedback
 export const endTelemetry = () => {
   Telemetry.end({});
 };
-
-
 
 
 
