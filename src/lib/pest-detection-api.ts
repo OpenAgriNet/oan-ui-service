@@ -1,4 +1,5 @@
 import axios from 'axios';
+import apiService from '@/lib/api';
 
 // ---- Interfaces ----
 
@@ -61,7 +62,6 @@ interface PestCropApiEnvelope {
 
 // ---- API Base URLs ----
 
-const PEST_API_BASE = 'https://stage-farmers-app-api.mahapocra.gov.in';
 const PEST_FEEDBACK_API_BASE = 'https://farmers-app-api.mahapocra.gov.in';
 
 const asArray = <T>(payload: unknown): T[] => {
