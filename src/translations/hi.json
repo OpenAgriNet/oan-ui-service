@@ -106,6 +106,7 @@
     "title": "कीट एवं रोग पहचान",
     "selectCrop": "फसल चुनें",
     "sowingDate": "बोने की तारीख",
+    "sowingDateHint": "कम से कम एक सप्ताह पहले की बुवाई की तारीख चुनें।",
     "plantPestImage": "पौधे/कीट की छवि",
     "captureImage": "फोटो लें",
     "selectFromGallery": "गैलरी से चुनें",

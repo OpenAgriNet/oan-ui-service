@@ -357,6 +357,7 @@
     "title": "Pest & Disease Identification",
     "selectCrop": "Select Crop",
     "sowingDate": "Sowing Date",
+    "sowingDateHint": "Choose a sowing date at least one week ago.",
     "plantPestImage": "Plant/Pest Image",
     "captureImage": "Capture Image",
     "selectFromGallery": "Select From Gallery",

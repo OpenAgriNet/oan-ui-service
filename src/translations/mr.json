@@ -358,6 +358,7 @@
     "title": "कीड आणि रोग ओळख",
     "selectCrop": "पीक निवडा",
     "sowingDate": "पेरणीची तारीख",
+    "sowingDateHint": "किमान एक आठवड्यापूर्वीची पेरणीची तारीख निवडा.",
     "plantPestImage": "पीक/कीड प्रतिमा",
     "captureImage": "फोटो घ्या",
     "selectFromGallery": "गॅलरीतून निवडा",
