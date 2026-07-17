@@ -11,6 +11,76 @@ import { toast } from "@/hooks/use-toast";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/jpg"];
+const MAX_COMPRESSED_DIMENSION = 4096;
+const JPEG_QUALITY_STEPS = [0.88, 0.76, 0.64, 0.52];
+
+const getLocalDateDaysAgo = (days: number): string => {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  const timezoneOffset = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - timezoneOffset).toISOString().split("T")[0];
+};
+
+const canvasToBlob = (canvas: HTMLCanvasElement, quality: number): Promise<Blob> =>
+  new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => blob ? resolve(blob) : reject(new Error("Image compression failed")),
+      "image/jpeg",
+      quality
+    );
+  });
+
+const loadImage = (file: File): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Could not read image"));
+    };
+    image.src = objectUrl;
+  });
+
+const compressImageUnderLimit = async (file: File): Promise<File> => {
+  const image = await loadImage(file);
+  const initialScale = Math.min(
+    1,
+    MAX_COMPRESSED_DIMENSION / Math.max(image.naturalWidth, image.naturalHeight)
+  );
+  let width = Math.max(1, Math.round(image.naturalWidth * initialScale));
+  let height = Math.max(1, Math.round(image.naturalHeight * initialScale));
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Image compression is unavailable");
+
+  for (let resizeAttempt = 0; resizeAttempt < 4; resizeAttempt += 1) {
+    canvas.width = width;
+    canvas.height = height;
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+
+    for (const quality of JPEG_QUALITY_STEPS) {
+      const blob = await canvasToBlob(canvas, quality);
+      if (blob.size <= MAX_FILE_SIZE) {
+        const baseName = file.name.replace(/\.(jpe?g|png)$/i, "") || "crop-image";
+        return new File([blob], `${baseName}.jpg`, {
+          type: "image/jpeg",
+          lastModified: Date.now(),
+        });
+      }
+    }
+
+    width = Math.max(1, Math.round(width * 0.75));
+    height = Math.max(1, Math.round(height * 0.75));
+  }
+
+  throw new Error("Image could not be compressed below 10 MB");
+};
 
 interface PestDetectionDialogProps {
   open: boolean;
@@ -38,6 +108,7 @@ export function PestDetectionDialog({
   const [sowingDate, setSowingDate] = useState<string>("");
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -78,6 +149,7 @@ export function PestDetectionDialog({
       setSowingDate("");
       setSelectedImage(null);
       setImagePreview(null);
+      setIsCompressing(false);
     }
   }, [open]);
 
@@ -90,29 +162,46 @@ export function PestDetectionDialog({
       });
       return false;
     }
-    if (file.size > MAX_FILE_SIZE) {
-      toast({
-        title: t("pestDetection.fileTooLarge") as string || "File too large",
-        description: t("pestDetection.imageFormatHint") as string || "Max file size is 10 MB.",
-        variant: "destructive",
-      });
-      return false;
-    }
     return true;
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = ""; // allow the same file to be selected again
     if (!validateFile(file)) {
-      e.target.value = "";
       return;
     }
-    setSelectedImage(file);
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(reader.result as string);
-    reader.readAsDataURL(file);
-    e.target.value = ""; // reset input so same file can be re-selected
+
+    try {
+      let uploadFile = file;
+      if (file.size > MAX_FILE_SIZE) {
+        setIsCompressing(true);
+        uploadFile = await compressImageUnderLimit(file);
+        toast({
+          title: t("pestDetection.imageCompressed") as string,
+          description: t("pestDetection.imageCompressedDescription") as string,
+        });
+      }
+
+      if (uploadFile.size > MAX_FILE_SIZE) {
+        throw new Error("Compressed image is still over 10 MB");
+      }
+
+      setSelectedImage(uploadFile);
+      const reader = new FileReader();
+      reader.onload = () => setImagePreview(reader.result as string);
+      reader.readAsDataURL(uploadFile);
+    } catch (error) {
+      console.error("Image compression failed:", error);
+      toast({
+        title: t("pestDetection.fileTooLarge") as string,
+        description: t("pestDetection.compressionFailed") as string,
+        variant: "destructive",
+      });
+    } finally {
+      setIsCompressing(false);
+    }
   };
 
   const removeImage = () => {
@@ -133,7 +222,7 @@ export function PestDetectionDialog({
     onSubmit(selectedCropId, getLocalizedCropName(crop), sowingDate, selectedImage, crop.crop_name);
   };
 
-  const isFormValid = selectedCropId && sowingDate && selectedImage;
+  const isFormValid = selectedCropId && sowingDate && selectedImage && !isCompressing;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -177,9 +266,12 @@ export function PestDetectionDialog({
               type="date"
               value={sowingDate}
               onChange={(e) => setSowingDate(e.target.value)}
-              max={new Date().toISOString().split("T")[0]}
+              max={getLocalDateDaysAgo(7)}
               className="w-full"
             />
+            <p className="text-xs text-muted-foreground">
+              {(t("pestDetection.sowingDateHint") as string) || "Choose a sowing date at least one week ago."}
+            </p>
           </div>
 
           {/* Image Upload Area */}
@@ -188,7 +280,12 @@ export function PestDetectionDialog({
               {(t("pestDetection.plantPestImage") as string) || "Plant/Pest Image"}
             </Label>
 
-            {imagePreview ? (
+            {isCompressing ? (
+              <div className="flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border p-8 text-sm text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                {(t("pestDetection.compressingImage") as string) || "Compressing image..."}
+              </div>
+            ) : imagePreview ? (
               <div className="relative rounded-lg border-2 border-dashed border-border p-2">
                 <img
                   src={imagePreview}
@@ -249,6 +346,7 @@ export function PestDetectionDialog({
               accept="image/jpeg,image/png,image/jpg"
               capture="environment"
               onChange={handleFileSelect}
+              disabled={isCompressing}
               className="hidden"
             />
             <input
@@ -256,6 +354,7 @@ export function PestDetectionDialog({
               type="file"
               accept="image/jpeg,image/png,image/jpg"
               onChange={handleFileSelect}
+              disabled={isCompressing}
               className="hidden"
             />
           </div>
