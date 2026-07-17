@@ -14,6 +14,13 @@ const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/jpg"];
 const MAX_COMPRESSED_DIMENSION = 4096;
 const JPEG_QUALITY_STEPS = [0.88, 0.76, 0.64, 0.52];
 
+const getLocalDateDaysAgo = (days: number): string => {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  const timezoneOffset = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - timezoneOffset).toISOString().split("T")[0];
+};
+
 const canvasToBlob = (canvas: HTMLCanvasElement, quality: number): Promise<Blob> =>
   new Promise((resolve, reject) => {
     canvas.toBlob(
@@ -259,9 +266,12 @@ export function PestDetectionDialog({
               type="date"
               value={sowingDate}
               onChange={(e) => setSowingDate(e.target.value)}
-              max={new Date().toISOString().split("T")[0]}
+              max={getLocalDateDaysAgo(7)}
               className="w-full"
             />
+            <p className="text-xs text-muted-foreground">
+              {(t("pestDetection.sowingDateHint") as string) || "Choose a sowing date at least one week ago."}
+            </p>
           </div>
 
           {/* Image Upload Area */}
