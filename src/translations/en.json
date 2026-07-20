@@ -8,6 +8,10 @@
   "stopRecording": "Stop recording",
   "send": "Send message",
   "Listen": "Listen",
+  "relatedVideos": "Related Videos",
+  "openVideoExternally": "Open video",
+  "video": "Video",
+  "videoNotSupported": "Your browser does not support video playback.",
   "selectLanguage": "Select language",
   "disclaimerText": "AI-generated content. Please verify information independently.",
   "questions": [

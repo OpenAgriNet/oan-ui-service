@@ -8,6 +8,10 @@
   "stopRecording": "रिकॉर्डिंग बंद करें",
   "send": "संदेश भेजें",
   "Listen": "सुनें",
+  "relatedVideos": "संबंधित वीडियो",
+  "openVideoExternally": "वीडियो खोलें",
+  "video": "वीडियो",
+  "videoNotSupported": "आपका ब्राउज़र वीडियो प्लेबैक का समर्थन नहीं करता।",
   "selectLanguage": "भाषा चुनें",
   "disclaimerText": "AI-उत्पन्न जानकारी। कृपया स्वतंत्र रूप से सत्यापित करें।",
   "questions": [

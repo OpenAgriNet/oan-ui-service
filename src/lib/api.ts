@@ -1,6 +1,14 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { environment } from '@/config/environment';
+import {
+  extractVideosFromEvent,
+  parseAgUiSseBuffer,
+  textDeltaFromEvent,
+  type VideoResource,
+} from '@/lib/ag-ui';
+
+export type { VideoResource };
 
 export interface LocationData {
   latitude: number;
@@ -10,6 +18,14 @@ export interface LocationData {
 export interface ChatResponse {
   response: string;
   status: string;
+  videos?: VideoResource[];
+}
+
+export interface SendUserQueryOptions {
+  userId?: string;
+  onVideos?: (videos: VideoResource[]) => void;
+  /** When true (default), stream via AG-UI for inline video support. */
+  useAgUi?: boolean;
 }
 
 export interface TranscriptionResponse {
@@ -126,12 +142,26 @@ class ApiService {
     session: string,
     sourceLang: string,
     targetLang: string,
-    onStreamData?: (data: string) => void
+    onStreamData?: (data: string) => void,
+    options?: SendUserQueryOptions
   ): Promise<ChatResponse> {
     try {
       this.refreshAuthToken();
       if (!this.validateAuth()) {
         return { response: "Authentication error", status: "error" };
+      }
+
+      const useAgUi = options?.useAgUi !== false;
+
+      if (onStreamData && useAgUi) {
+        return this.sendUserQueryAgUi(
+          msg,
+          session,
+          sourceLang,
+          targetLang,
+          onStreamData,
+          options
+        );
       }
       
       const params = {
@@ -145,7 +175,7 @@ class ApiService {
       const headers = this.getAuthHeaders();
 
       if (onStreamData) {
-        // Handle streaming response
+        // Legacy plain-text stream (GET /api/chat/)
         const endpointPath = '/api/chat/';
         const apiParams: Record<string, string> = { ...params } as Record<string, string>;
 
@@ -209,6 +239,116 @@ class ApiService {
       console.error('Error sending user query:', error);
       throw error;
     }
+  }
+
+  /**
+   * Stream chat via AG-UI SSE (POST /api/ag-ui/chat).
+   * Emits text deltas and optional related_videos for inline players.
+   */
+  private async sendUserQueryAgUi(
+    msg: string,
+    session: string,
+    sourceLang: string,
+    targetLang: string,
+    onStreamData: (data: string) => void,
+    options?: SendUserQueryOptions
+  ): Promise<ChatResponse> {
+    const body = {
+      query: msg,
+      session_id: session,
+      source_lang: sourceLang,
+      target_lang: targetLang,
+      user_id: options?.userId || 'anonymous',
+    };
+
+    const response = await fetch(`${this.apiUrl}/api/ag-ui/chat`, {
+      method: 'POST',
+      headers: {
+        ...this.getAuthHeaders(),
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        const error = new Error('Rate limit exceeded');
+        (error as any).status = 429;
+        throw error;
+      }
+      // Fall back to classic chat if AG-UI endpoint is missing on older backends.
+      if (response.status === 404 || response.status === 405) {
+        console.warn('AG-UI chat unavailable; falling back to /api/chat/');
+        return this.sendUserQuery(msg, session, sourceLang, targetLang, onStreamData, {
+          ...options,
+          useAgUi: false,
+        });
+      }
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('Response body is not readable');
+    }
+
+    let fullResponse = '';
+    let videos: VideoResource[] = [];
+    let sseBuffer = '';
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const { events, rest } = parseAgUiSseBuffer(sseBuffer, chunk);
+      sseBuffer = rest;
+
+      for (const event of events) {
+        if (event.type === 'RUN_ERROR') {
+          const message =
+            typeof event.message === 'string' ? event.message : 'AG-UI stream error';
+          throw new Error(message);
+        }
+
+        const delta = textDeltaFromEvent(event);
+        if (delta) {
+          fullResponse += delta;
+          onStreamData(delta);
+        }
+
+        const extracted = extractVideosFromEvent(event);
+        if (extracted?.length) {
+          videos = extracted;
+          options?.onVideos?.(extracted);
+        }
+      }
+    }
+
+    // Flush any trailing complete frame (rare, but safe).
+    if (sseBuffer.trim()) {
+      const { events } = parseAgUiSseBuffer(sseBuffer, '\n\n');
+      for (const event of events) {
+        const delta = textDeltaFromEvent(event);
+        if (delta) {
+          fullResponse += delta;
+          onStreamData(delta);
+        }
+        const extracted = extractVideosFromEvent(event);
+        if (extracted?.length) {
+          videos = extracted;
+          options?.onVideos?.(extracted);
+        }
+      }
+    }
+
+    return {
+      response: fullResponse,
+      status: 'success',
+      videos: videos.length ? videos : undefined,
+    };
   }
 
   async uploadPestImage(

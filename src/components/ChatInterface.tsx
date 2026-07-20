@@ -43,11 +43,14 @@ interface Message {
   imageUrl?: string;
   isPestDetectionResponse?: boolean;
   pestUploadId?: string;
+  /** Structured videos from AG-UI for inline playback */
+  videos?: import("@/lib/ag-ui").VideoResource[];
 }
 
 interface ChatResponse {
   response: string;
   status: string;
+  videos?: import("@/lib/ag-ui").VideoResource[];
 }
 
 interface TranscriptionResponse {
@@ -395,8 +398,9 @@ export function ChatInterface() {
     // Use the current sessionId or create a new UUID if needed
     const currentSession = sessionId || createSession();
     
-    // Handle streaming response
+    // Handle streaming response (AG-UI: text deltas + optional related videos)
     let streamingText = "";
+    let streamingVideos: import("@/lib/ag-ui").VideoResource[] | undefined;
     
     try {
       // Set streaming state to true when we begin receiving message chunks
@@ -422,8 +426,24 @@ export function ChatInterface() {
             isStreaming: true,
             questionId,
             questionText: text,
-            responseLanguage: targetLang
+            responseLanguage: targetLang,
+            ...(streamingVideos?.length ? { videos: streamingVideos } : {}),
           });
+        },
+        {
+          userId: user?.username || user?.mobile || "anonymous",
+          onVideos: (videos) => {
+            streamingVideos = videos;
+            scrollToBottom();
+            updateMessage(loadingMessageId, {
+              text: streamingText,
+              videos,
+              isStreaming: true,
+              questionId,
+              questionText: text,
+              responseLanguage: targetLang,
+            });
+          },
         }
       ) as ChatResponse;
 
@@ -434,7 +454,8 @@ export function ChatInterface() {
           isStreaming: false,
           questionId,
           questionText: text,
-          responseLanguage: targetLang
+          responseLanguage: targetLang,
+          videos: response.videos?.length ? response.videos : streamingVideos,
         });
         
         if (user?.is_guest_user) {
@@ -1195,6 +1216,7 @@ export function ChatInterface() {
                   errorTranslationKey={message.errorTranslationKey}
                   responseLanguage={message.responseLanguage}
                   imageUrl={message.imageUrl}
+                  videos={message.videos}
                 />
               ))}
               <div ref={messagesEndRef} className="h-8" />
