@@ -341,7 +341,7 @@ export function ChatMessage({
         <div className={cn(
           "flex flex-col min-w-[80px]",
           isUser ? "items-end max-w-[80%]" : "items-start",
-          !isUser && videos && videos.length > 0 ? "max-w-[min(100%,28rem)] sm:max-w-[min(100%,36rem)]" : "max-w-[80%]"
+          !isUser && videos && videos.length > 0 ? "w-full max-w-[80%]" : "max-w-[80%]"
         )}>
           <div className={cn(
             "rounded-2xl px-4 py-2.5 mb-1 w-fit",
