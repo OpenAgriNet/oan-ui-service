@@ -1025,23 +1025,32 @@ export function ChatInterface() {
             onClick={() => handleSuggestionSelect(currentSuggestion)}
           >
             <div className="flex items-center justify-between">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-6 w-6 rounded-full" 
-                onClick={handlePreviousSuggestion}
+              {allSuggestions.length > 1 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 rounded-full"
+                  onClick={handlePreviousSuggestion}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+              )}
+              <div
+                className="min-w-0 flex-1 truncate text-center font-medium"
+                title={currentSuggestion}
               >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <div className="font-medium">{currentSuggestion}</div>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-6 w-6 rounded-full" 
-                onClick={handleNextSuggestion}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+                {currentSuggestion}
+              </div>
+              {allSuggestions.length > 1 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 rounded-full"
+                  onClick={handleNextSuggestion}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -1239,23 +1248,32 @@ export function ChatInterface() {
                     onClick={() => handleSuggestionSelect(currentSuggestion)}
                   >
                     <div className="flex items-center justify-between">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-6 w-6 rounded-full" 
-                        onClick={handlePreviousSuggestion}
+                      {allSuggestions.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 rounded-full"
+                          onClick={handlePreviousSuggestion}
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <div
+                        className="min-w-0 flex-1 truncate text-center font-medium"
+                        title={currentSuggestion}
                       >
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                      <div className="font-medium">{currentSuggestion}</div>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-6 w-6 rounded-full" 
-                        onClick={handleNextSuggestion}
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
+                        {currentSuggestion}
+                      </div>
+                      {allSuggestions.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 rounded-full"
+                          onClick={handleNextSuggestion}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )}
