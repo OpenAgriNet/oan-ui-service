@@ -1244,7 +1244,7 @@ export function ChatInterface() {
               <div className="relative max-w-2xl mx-auto">
                 {currentSuggestion && (
                   <div 
-                    className="absolute -top-16 left-4 right-4 bg-background/95 p-3 backdrop-blur rounded-lg text-sm z-10 cursor-pointer hover:border hover:border-primary transition-all"
+                    className="absolute -top-16 left-4 right-4 bg-background/95 p-3 backdrop-blur rounded-lg border border-primary text-sm z-10 cursor-pointer transition-all"
                     onClick={() => handleSuggestionSelect(currentSuggestion)}
                   >
                     <div className="flex items-center justify-between">
