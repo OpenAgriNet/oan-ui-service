@@ -220,14 +220,13 @@
       "म्हैस",
       "शेळी",
       "मेंढी",
-      "कोंबडी",
       "डुक्कर",
       "घोडा",
       "उंट",
       "गाढव",
-      "बदक",
-      "ससा",
-      "बैल"
+      "कुत्रा",
+      "मांजर"
+ 
     ],
     "Scheme name": [
       "पीएम-किसान",
@@ -257,7 +256,7 @@
     "livestock.health.parasite_signs": "[animal] मध्ये परजीवी संसर्गाची लक्षणे कोणती आहेत?",
     "livestock.environment.methane_reduce": "[animal] मधून मिथेन उत्सर्जन कसे कमी करू?",
     "livestock.breeding.artificial_insemination": "[animal] मध्ये कृत्रिम रेतन म्हणजे काय?",
-    "livestock.biosecurity.measures": "[animal] पशुपालनासाठी  जैवसुरक्षा उपाय कोणते आहेत?",
+    "livestock.biosecurity.measures": "[animal] पशुपालनासाठी जैवसुरक्षा उपाय कोणते आहेत?",
     "livestock.health.health_calendar_importance": "[animal] साठी आरोग्य दिनदर्शिका का महत्त्वाची आहे?",
     "weather.forecast.5day": "माझ्या भागातील पुढील ५ दिवसांचा हवामान अंदाज काय आहे?",
     "weather.rain.tomorrow": "माझ्या भागात उद्या पाऊस पडेल का?",
