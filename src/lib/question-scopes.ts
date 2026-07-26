@@ -7,15 +7,15 @@ export const QUESTION_ANIMAL_SCOPE: Record<string, string[]> = {
   "qa.livestock.vaccines.schedule_year": ["cow", "buffalo", "goat", "sheep", "chicken"],
   "qa.livestock.feed.silage_prep": ["cow", "buffalo", "goat", "sheep"],
   "qa.livestock.feed.ration_balancing": ["cow", "buffalo", "goat", "sheep"],
-  "qa.livestock.health.common_diseases_prevention": ["cow", "buffalo", "goat", "sheep", "chicken"],
+  "qa.livestock.health.common_diseases_prevention": ["cow", "buffalo", "goat", "sheep"],
   "qa.livestock.care.newborn_calves": ["cow", "buffalo"],
   "qa.livestock.health.lsd_protection": ["cow", "buffalo"],
   "qa.livestock.health.bloat_treatment": ["cow", "buffalo", "goat", "sheep"],
-  "qa.livestock.health.parasite_signs": ["cow", "buffalo", "goat", "sheep", "chicken"],
+  "qa.livestock.health.parasite_signs": ["cow", "buffalo", "goat", "sheep"],
   "qa.livestock.environment.methane_reduce": ["cow", "buffalo", "goat", "sheep"],
   "qa.livestock.breeding.artificial_insemination": ["cow", "buffalo", "goat", "sheep"],
-  "qa.livestock.biosecurity.measures": ["cow", "buffalo", "goat", "sheep", "chicken"],
-  "qa.livestock.health.health_calendar_importance": ["cow", "buffalo", "goat", "sheep", "chicken"]
+  "qa.livestock.biosecurity.measures": ["cow", "buffalo", "goat", "sheep"],
+  "qa.livestock.health.health_calendar_importance": ["cow", "buffalo", "goat", "sheep"]
 };
 
 /**
