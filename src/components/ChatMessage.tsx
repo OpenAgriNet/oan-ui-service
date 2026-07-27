@@ -22,7 +22,8 @@ import { useTts } from "@/hooks/use-tts";
 import { useLanguage } from "@/components/LanguageProvider";
 import { useAuth } from "@/contexts/AuthContext";
 import { RelatedVideos } from "@/components/RelatedVideos";
-import { normalizeVideoMentionText, type VideoResource } from "@/lib/ag-ui";
+import { SearchResultsPanel } from "@/components/SearchResultsPanel";
+import { normalizeVideoMentionText, type DocumentResource, type VideoResource } from "@/lib/ag-ui";
 
 interface ChatMessageProps {
   message: string;
@@ -42,6 +43,7 @@ interface ChatMessageProps {
   responseLanguage?: string;
   imageUrl?: string;
   videos?: VideoResource[];
+  documents?: DocumentResource[];
 }
 
 export function ChatMessage({
@@ -62,6 +64,7 @@ export function ChatMessage({
   responseLanguage,
   imageUrl,
   videos,
+  documents,
 }: ChatMessageProps) {
   const [isLiked, setIsLiked] = useState(false);
   const [isDisliked, setIsDisliked] = useState(false);
@@ -213,6 +216,9 @@ export function ChatMessage({
               </ReactMarkdown>
               {!isUser && !isErrorMessage && videos && videos.length > 0 && (
                 <RelatedVideos videos={videos} />
+              )}
+              {!isUser && !isErrorMessage && documents && documents.length > 0 && (
+                <SearchResultsPanel documents={documents} responseText={displayMessage} />
               )}
             </div>
             
@@ -377,6 +383,9 @@ export function ChatMessage({
                 </ReactMarkdown>
                 {!isUser && !isErrorMessage && videos && videos.length > 0 && (
                   <RelatedVideos videos={videos} />
+                )}
+                {!isUser && !isErrorMessage && documents && documents.length > 0 && (
+                  <SearchResultsPanel documents={documents} responseText={displayMessage} />
                 )}
               </div>
             )}

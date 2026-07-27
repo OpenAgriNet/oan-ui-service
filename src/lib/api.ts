@@ -2,13 +2,15 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { environment } from '@/config/environment';
 import {
+  extractDocumentsFromEvent,
   extractVideosFromEvent,
   parseAgUiSseBuffer,
   textDeltaFromEvent,
+  type DocumentResource,
   type VideoResource,
 } from '@/lib/ag-ui';
 
-export type { VideoResource };
+export type { VideoResource, DocumentResource };
 
 export interface LocationData {
   latitude: number;
@@ -19,11 +21,14 @@ export interface ChatResponse {
   response: string;
   status: string;
   videos?: VideoResource[];
+  documents?: DocumentResource[];
 }
 
 export interface SendUserQueryOptions {
   userId?: string;
   onVideos?: (videos: VideoResource[]) => void;
+  /** Retrieved documents (grouped chunks) for the Search Results panel. */
+  onDocuments?: (documents: DocumentResource[]) => void;
   /** When true (default), stream via AG-UI for inline video support. */
   useAgUi?: boolean;
 }
@@ -295,6 +300,7 @@ class ApiService {
 
     let fullResponse = '';
     let videos: VideoResource[] = [];
+    let documents: DocumentResource[] = [];
     let sseBuffer = '';
     const decoder = new TextDecoder();
 
@@ -324,6 +330,12 @@ class ApiService {
           videos = extracted;
           options?.onVideos?.(extracted);
         }
+
+        const extractedDocuments = extractDocumentsFromEvent(event);
+        if (extractedDocuments?.length) {
+          documents = extractedDocuments;
+          options?.onDocuments?.(extractedDocuments);
+        }
       }
     }
 
@@ -341,6 +353,11 @@ class ApiService {
           videos = extracted;
           options?.onVideos?.(extracted);
         }
+        const extractedDocuments = extractDocumentsFromEvent(event);
+        if (extractedDocuments?.length) {
+          documents = extractedDocuments;
+          options?.onDocuments?.(extractedDocuments);
+        }
       }
     }
 
@@ -348,6 +365,7 @@ class ApiService {
       response: fullResponse,
       status: 'success',
       videos: videos.length ? videos : undefined,
+      documents: documents.length ? documents : undefined,
     };
   }
 

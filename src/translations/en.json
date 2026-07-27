@@ -12,6 +12,8 @@
   "openVideoExternally": "Open video",
   "video": "Video",
   "videoNotSupported": "Your browser does not support video playback.",
+  "searchResults": "Search Results",
+  "relevanceScore": "Score",
   "selectLanguage": "Select language",
   "disclaimerText": "AI-generated content. Please verify information independently.",
   "questions": [
