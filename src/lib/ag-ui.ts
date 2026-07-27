@@ -14,6 +14,22 @@ export interface VideoResource {
   source?: string | null;
 }
 
+/** A single retrieved chunk (one Marqo row) shown under its document. */
+export interface ChunkResource {
+  id: string;
+  text: string;
+  score?: number;
+}
+
+/** A retrieved document plus the chunks of it that came back this turn. */
+export interface DocumentResource {
+  id: string;
+  title: string;
+  source?: string | null;
+  chunks: ChunkResource[];
+  score?: number;
+}
+
 export type AgUiEvent = {
   type: string;
   [key: string]: unknown;
@@ -67,6 +83,34 @@ export function extractVideosFromEvent(event: AgUiEvent): VideoResource[] | null
         typeof raw === "string" ? JSON.parse(raw) : (raw as { videos?: VideoResource[] });
       if (content?.videos && Array.isArray(content.videos)) {
         return content.videos;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract structured documents (grouped chunks) from CUSTOM related_documents
+ * or TOOL_CALL_RESULT, for grounding validation in the Search Results panel.
+ */
+export function extractDocumentsFromEvent(event: AgUiEvent): DocumentResource[] | null {
+  if (event.type === "CUSTOM" && event.name === "related_documents") {
+    const value = event.value as { documents?: DocumentResource[] } | undefined;
+    if (value?.documents && Array.isArray(value.documents)) {
+      return value.documents;
+    }
+  }
+
+  if (event.type === "TOOL_CALL_RESULT") {
+    const raw = event.content;
+    try {
+      const content =
+        typeof raw === "string" ? JSON.parse(raw) : (raw as { documents?: DocumentResource[] });
+      if (content?.documents && Array.isArray(content.documents)) {
+        return content.documents;
       }
     } catch {
       // ignore

@@ -45,12 +45,15 @@ interface Message {
   pestUploadId?: string;
   /** Structured videos from AG-UI for inline playback */
   videos?: import("@/lib/ag-ui").VideoResource[];
+  /** Retrieved documents (grouped chunks) from AG-UI for the Search Results panel */
+  documents?: import("@/lib/ag-ui").DocumentResource[];
 }
 
 interface ChatResponse {
   response: string;
   status: string;
   videos?: import("@/lib/ag-ui").VideoResource[];
+  documents?: import("@/lib/ag-ui").DocumentResource[];
 }
 
 interface TranscriptionResponse {
@@ -401,7 +404,8 @@ export function ChatInterface() {
     // Handle streaming response (AG-UI: text deltas + optional related videos)
     let streamingText = "";
     let streamingVideos: import("@/lib/ag-ui").VideoResource[] | undefined;
-    
+    let streamingDocuments: import("@/lib/ag-ui").DocumentResource[] | undefined;
+
     try {
       // Set streaming state to true when we begin receiving message chunks
       updateMessage(loadingMessageId, {
@@ -444,6 +448,18 @@ export function ChatInterface() {
               responseLanguage: targetLang,
             });
           },
+          onDocuments: (documents) => {
+            streamingDocuments = documents;
+            scrollToBottom();
+            updateMessage(loadingMessageId, {
+              text: streamingText,
+              documents,
+              isStreaming: true,
+              questionId,
+              questionText: text,
+              responseLanguage: targetLang,
+            });
+          },
         }
       ) as ChatResponse;
 
@@ -456,6 +472,7 @@ export function ChatInterface() {
           questionText: text,
           responseLanguage: targetLang,
           videos: response.videos?.length ? response.videos : streamingVideos,
+          documents: response.documents?.length ? response.documents : streamingDocuments,
         });
         
         if (user?.is_guest_user) {
@@ -1226,6 +1243,7 @@ export function ChatInterface() {
                   responseLanguage={message.responseLanguage}
                   imageUrl={message.imageUrl}
                   videos={message.videos}
+                  documents={message.documents}
                 />
               ))}
               <div ref={messagesEndRef} className="h-8" />
