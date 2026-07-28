@@ -1,3 +1,4 @@
+
 {
   "welcome": "राम राम! मु तमारो खेती सहायक छुं। आज, मु तमारी कीं मदद कर सकू?",
   "inputPlaceholder": "तुमां प्रश्न फुचा",
@@ -5,6 +6,12 @@
   "stopRecording": "रेकॉर्डिंग बंद करो",
   "send": "संदेश मेल्हो",
   "Listen": "होमजी ल्या",
+  "relatedVideos": "संबंधित व्हिडिओ",
+  "openVideoExternally": "व्हिडिओ उघडो",
+  "video": "व्हिडिओ",
+  "videoNotSupported": "तुमारो ब्राउझर व्हिडिओ प्लेबॅक समर्थन करत नाय.",
+  "searchResults": "खोज परिणाम",
+  "relevanceScore": "स्कोर",
   "selectLanguage": "भाखा चूनो",
   "disclaimerText": "Al य तियार केली माहिती. मेहरबानी कीने स्वतंत्र रूपांम खोरी हाय का ती तपासा",
   "questions": [
@@ -124,7 +131,7 @@
       "नाशिक", "पुणे", "औरंगाबाद", "नागपूर", "कोल्हापूर", "सातारा", "सांगली", "अहमदनगर", "सोलापूर", "ठाणे"
     ],
     "animal": [
-      "गाय", "भेंस", "बकरी", "गेंटा", "मुरगी", "डुक्कर", "घोडो", "उंठ", "गधेडो", "बदक", "ससलो", "बळद"
+      "गाय", "बकरी", "गेंटा", "डुक्कर", "घोडो", "उंठ", "गधेडो", "बळद", "कुतरो", "मांजर"
     ],
     "Scheme name": [
       "पीएम-किसान", "पीएमएफबीवाय", "केसीसी", "मृदा आरोग्य पत्रिका", "एटीएमए", "एआयएफ"
@@ -244,9 +251,29 @@
     "fruit.fruit_load.per_tree_how_many": "[fruit crop] म एका झाड पर कतला फळ लेवा पाहीजे?",
     "fruit.rest_period.operations_to_follow": "[fruit crop] म आराम ना वखत पर कसी कामु करवानी?",
     
-    "flowers.requirements.sunlight_and_shade": "फुलशेती केंतां सुर्यप्रकाश आन् सावली कोत्ती लागेहे?",
     "flowers.greenhouse.benefits": "पोलीहाउस आन् ग्रीन हाउस फुलशेती केरां केंतां केहंकी फायदेशीर हाय?",
     "flowers.export.best_cut_flower": "कट फ्लावर उत्पादन आन् निर्यात केरां केंअतां केल्ले फुले हांरें हाय?"
+  },
+  "pestDetection": {
+    "title": "कीड आन् रोग ओळख",
+    "selectCrop": "पीक चूनो",
+    "sowingDate": "पेरणी तारीख",
+    "sowingDateHint": "कम सी कम एक हफ्ता पेलां की पेरणी तारीख चूनो.",
+    "plantPestImage": "पीक/कीड फोटो",
+    "captureImage": "फोटो खींचो",
+    "selectFromGallery": "गैलरी मां चूनो",
+    "imageFormatHint": "फक्त JPEG, PNG आन् JPG. कमाल 10 MB.",
+    "analyzeSubmit": "विश्लेषण करो आन् मेल्हो",
+    "analyzing": "तुमारी पीक फोटो विश्लेषण हो रियो छे...",
+    "errorGeneric": "फोटो विश्लेषण नहीं होयो. फेर प्रयास करो.",
+    "fileTooLarge": "फोटो 10 MB सीमा सी मोटो हाय.",
+    "invalidFormat": "JPEG, PNG या JPG फोटो चूनो.",
+    "compressingImage": "फोटो नानो की रियो छे...",
+    "imageCompressed": "फोटो नानो की दियो",
+    "imageCompressedDescription": "फोटो 10 MB सी कम हाय आन् अपलोड केरां तयार हाय.",
+    "compressionFailed": "फोटो 10 MB सी कम नहीं होयो. नानो फोटो चूनो.",
+    "uploadError": "फोटो अपलोड नहीं होयो. फेर प्रयास करो.",
+    "chatAnalysisPrompt": "कृपया अपलोड कीती पीक फोटो मां कीड आन् रोग विश्लेषण करो. Image ID: [imageId]. Crop: [cropName]. Sowing date: [sowingDate]. crop_id: [crop_id]. crop_type: [crop_type]."
   },
   "maintenance": {
     "title": "कामकाज चालू हाय",

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Mic, MicOff, ChevronUp, ChevronLeft, ChevronRight, Info } from "lucide-react";
+import { Send, Mic, MicOff, ChevronUp, ChevronLeft, ChevronRight, Info, Leaf } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -24,6 +24,8 @@ import { cn } from "@/lib/utils";
 import { useTts } from "@/hooks/use-tts";
 import { FeedbackForm } from "@/components/FeedbackForm";
 import { useAuth } from "@/contexts/AuthContext";
+import { PestDetectionDialog } from "@/components/PestDetectionDialog";
+import { FALLBACK_CROPS, storePestFeedback } from "@/lib/pest-detection-api";
 
 interface Message {
   id: string;
@@ -38,11 +40,20 @@ interface Message {
   isErrorMessage?: boolean;
   errorTranslationKey?: string;
   responseLanguage?: string;
+  imageUrl?: string;
+  isPestDetectionResponse?: boolean;
+  pestUploadId?: string;
+  /** Structured videos from AG-UI for inline playback */
+  videos?: import("@/lib/ag-ui").VideoResource[];
+  /** Retrieved documents (grouped chunks) from AG-UI for the Search Results panel */
+  documents?: import("@/lib/ag-ui").DocumentResource[];
 }
 
 interface ChatResponse {
   response: string;
   status: string;
+  videos?: import("@/lib/ag-ui").VideoResource[];
+  documents?: import("@/lib/ag-ui").DocumentResource[];
 }
 
 interface TranscriptionResponse {
@@ -113,6 +124,10 @@ export function ChatInterface() {
   const feedbackMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const feedbackAudioStreamRef = useRef<MediaStream | null>(null);
   const [feedbackAudioLevel, setFeedbackAudioLevel] = useState(0.5);
+
+  // Pest detection state
+  const [showPestDetectionDialog, setShowPestDetectionDialog] = useState(false);
+  const [isPestDetectionSubmitting, setIsPestDetectionSubmitting] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -386,9 +401,11 @@ export function ChatInterface() {
     // Use the current sessionId or create a new UUID if needed
     const currentSession = sessionId || createSession();
     
-    // Handle streaming response
+    // Handle streaming response (AG-UI: text deltas + optional related videos)
     let streamingText = "";
-    
+    let streamingVideos: import("@/lib/ag-ui").VideoResource[] | undefined;
+    let streamingDocuments: import("@/lib/ag-ui").DocumentResource[] | undefined;
+
     try {
       // Set streaming state to true when we begin receiving message chunks
       updateMessage(loadingMessageId, {
@@ -413,8 +430,36 @@ export function ChatInterface() {
             isStreaming: true,
             questionId,
             questionText: text,
-            responseLanguage: targetLang
+            responseLanguage: targetLang,
+            ...(streamingVideos?.length ? { videos: streamingVideos } : {}),
           });
+        },
+        {
+          userId: user?.username || user?.mobile || "anonymous",
+          onVideos: (videos) => {
+            streamingVideos = videos;
+            scrollToBottom();
+            updateMessage(loadingMessageId, {
+              text: streamingText,
+              videos,
+              isStreaming: true,
+              questionId,
+              questionText: text,
+              responseLanguage: targetLang,
+            });
+          },
+          onDocuments: (documents) => {
+            streamingDocuments = documents;
+            scrollToBottom();
+            updateMessage(loadingMessageId, {
+              text: streamingText,
+              documents,
+              isStreaming: true,
+              questionId,
+              questionText: text,
+              responseLanguage: targetLang,
+            });
+          },
         }
       ) as ChatResponse;
 
@@ -425,7 +470,9 @@ export function ChatInterface() {
           isStreaming: false,
           questionId,
           questionText: text,
-          responseLanguage: targetLang
+          responseLanguage: targetLang,
+          videos: response.videos?.length ? response.videos : streamingVideos,
+          documents: response.documents?.length ? response.documents : streamingDocuments,
         });
         
         if (user?.is_guest_user) {
@@ -559,6 +606,102 @@ export function ChatInterface() {
     }
   };
 
+  const handlePestDetectionSubmit = async (
+    cropId: string,
+    cropName: string,
+    sowingDate: string,
+    image: File,
+    cropNameEnglish?: string
+  ) => {
+    setIsPestDetectionSubmitting(true);
+    setShowPestDetectionDialog(false);
+    setIsMessageLoading(true);
+
+    // Create a URL for the image to display in chat
+    const imageObjectUrl = URL.createObjectURL(image);
+
+    // Resolve English crop name for the API (API requires English names)
+    const englishCrop = FALLBACK_CROPS.find((c) => String(c.crop_id) === cropId);
+    const cropTypeForApi = cropNameEnglish || (englishCrop ? englishCrop.crop_name : cropName);
+    const cropIdForApi = cropId.trim();
+
+    // Add user message with image, crop name and sowing date (right side)
+    if (!inputPositioned) {
+      setInputPositioned(true);
+    }
+    addMessage(
+      `**${cropName}**\n${sowingDate}`,
+      true,
+      { imageUrl: imageObjectUrl }
+    );
+
+    // Add a loading bot message (left side)
+    const loadingMessageId = addMessage("", false, { isLoading: true });
+    scrollToBottomOfMessages();
+
+    try {
+      const upload = await apiService.uploadPestImage(
+        image,
+        cropIdForApi,
+        cropTypeForApi,
+        sowingDate
+      );
+
+      if (upload.status !== "success") {
+        throw new Error(upload.message || "Upload failed");
+      }
+
+      const imageId = upload.id || upload.upload_id;
+
+      updateMessage(loadingMessageId, {
+        isPestDetectionResponse: true,
+        pestUploadId: imageId,
+      });
+
+      const cropIdForChat = upload.crop_id || cropIdForApi;
+      const cropTypeForChat =
+        upload.crop_type || cropTypeForApi.trim().toLowerCase();
+      const chatPrompt =
+        (t("pestDetection.chatAnalysisPrompt", {
+          imageId,
+          cropName,
+          sowingDate,
+          crop_id: cropIdForChat,
+          crop_type: cropTypeForChat,
+        }) as string) ||
+        `Please perform pest and disease analysis for the uploaded crop image. Image ID: ${imageId}. Crop: ${cropName}. Sowing date: ${sowingDate}. crop_id: ${cropIdForChat}. crop_type: ${cropTypeForChat}.`;
+
+      await sendMessageToApi(chatPrompt, loadingMessageId);
+    } catch (error) {
+      console.error("Pest detection failed:", error);
+      const isUploadError = error instanceof Error && error.message.includes("Upload failed");
+      updateMessage(loadingMessageId, {
+        text: "",
+        isLoading: false,
+        isErrorMessage: true,
+        errorTranslationKey: isUploadError
+          ? "pestDetection.uploadError"
+          : "pestDetection.errorGeneric",
+      });
+      forceUIRefresh();
+    } finally {
+      setIsMessageLoading(false);
+      setIsPestDetectionSubmitting(false);
+    }
+  };
+
+  const submitPestFeedbackIfApplicable = async (
+    message: Message,
+    feedback: string
+  ) => {
+    if (!message.isPestDetectionResponse || !message.pestUploadId) return;
+    try {
+      await storePestFeedback(message.pestUploadId, feedback);
+    } catch (error) {
+      console.error("Failed to store pest detection feedback:", error);
+    }
+  };
+
   // Feedback handling
   const handleDislike = (messageId: string, questionText: string, responseText: string) => {
     const message = messages.find(m => m.id === messageId);
@@ -583,6 +726,8 @@ export function ChatInterface() {
     logFeedbackEvent(message.questionId || messageId, sessionId, "Liked the response", "like", message.questionText || "", message.text);
     endTelemetry();
 
+    void submitPestFeedbackIfApplicable(message, "Liked the response");
+
     // Send a generic feedback message
     toast({
       title: t("toast.feedbackThankYou.title") as string,
@@ -602,6 +747,9 @@ export function ChatInterface() {
     startTelemetry(sessionId, { preferred_username: getTelemetryUid(), email: user?.email || "default-email" });
     logFeedbackEvent(message.questionId || dislikedMessageId, sessionId, feedbackText, "dislike", message.questionText || "", message.text);
     endTelemetry();
+
+    void submitPestFeedbackIfApplicable(message, feedbackText);
+
     setShowFeedbackDialog(false);
     setFeedbackText("");
     setDislikedMessageId(null);
@@ -894,23 +1042,32 @@ export function ChatInterface() {
             onClick={() => handleSuggestionSelect(currentSuggestion)}
           >
             <div className="flex items-center justify-between">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-6 w-6 rounded-full" 
-                onClick={handlePreviousSuggestion}
+              {allSuggestions.length > 1 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 rounded-full"
+                  onClick={handlePreviousSuggestion}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+              )}
+              <div
+                className="min-w-0 flex-1 truncate text-center font-medium"
+                title={currentSuggestion}
               >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <div className="font-medium">{currentSuggestion}</div>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-6 w-6 rounded-full" 
-                onClick={handleNextSuggestion}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+                {currentSuggestion}
+              </div>
+              {allSuggestions.length > 1 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 rounded-full"
+                  onClick={handleNextSuggestion}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -952,6 +1109,16 @@ export function ChatInterface() {
                 maxRows={6}
               />
               <div className="flex flex-shrink-0 gap-2">
+                <Button
+                  onClick={() => setShowPestDetectionDialog(true)}
+                  variant="outline"
+                  size="icon"
+                  className="rounded-full flex-shrink-0 h-9 w-9"
+                  aria-label="Pest Detection"
+                  disabled={isMessageLoading}
+                >
+                  <Leaf className="h-4 w-4" />
+                </Button>
                 <Button
                   onClick={toggleRecording}
                   variant={isRecording ? "destructive" : "outline"}
@@ -1074,6 +1241,9 @@ export function ChatInterface() {
                   isErrorMessage={message.isErrorMessage}
                   errorTranslationKey={message.errorTranslationKey}
                   responseLanguage={message.responseLanguage}
+                  imageUrl={message.imageUrl}
+                  videos={message.videos}
+                  documents={message.documents}
                 />
               ))}
               <div ref={messagesEndRef} className="h-8" />
@@ -1092,27 +1262,36 @@ export function ChatInterface() {
               <div className="relative max-w-2xl mx-auto">
                 {currentSuggestion && (
                   <div 
-                    className="absolute -top-16 left-4 right-4 bg-background/95 p-3 backdrop-blur rounded-lg text-sm z-10 cursor-pointer hover:border hover:border-primary transition-all"
+                    className="absolute -top-16 left-4 right-4 bg-background/95 p-3 backdrop-blur rounded-lg border border-primary text-sm z-10 cursor-pointer transition-all"
                     onClick={() => handleSuggestionSelect(currentSuggestion)}
                   >
                     <div className="flex items-center justify-between">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-6 w-6 rounded-full" 
-                        onClick={handlePreviousSuggestion}
+                      {allSuggestions.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 rounded-full"
+                          onClick={handlePreviousSuggestion}
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <div
+                        className="min-w-0 flex-1 truncate text-center font-medium"
+                        title={currentSuggestion}
                       >
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                      <div className="font-medium">{currentSuggestion}</div>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-6 w-6 rounded-full" 
-                        onClick={handleNextSuggestion}
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
+                        {currentSuggestion}
+                      </div>
+                      {allSuggestions.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 rounded-full"
+                          onClick={handleNextSuggestion}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1132,6 +1311,16 @@ export function ChatInterface() {
                     minRows={1}
                     maxRows={6}
                   />
+                  <Button
+                    onClick={() => setShowPestDetectionDialog(true)}
+                    variant="outline"
+                    size="icon"
+                    className="rounded-full flex-shrink-0"
+                    aria-label="Pest Detection"
+                    disabled={isMessageLoading}
+                  >
+                    <Leaf className="h-5 w-5" />
+                  </Button>
                   <Button
                     onClick={toggleRecording}
                     variant={isRecording ? "destructive" : "outline"}
@@ -1177,6 +1366,12 @@ export function ChatInterface() {
         toggleFeedbackRecording={toggleFeedbackRecording}
         feedbackAudioLevel={feedbackAudioLevel}
         submitFeedback={submitFeedback}
+      />
+      <PestDetectionDialog
+        open={showPestDetectionDialog}
+        onOpenChange={setShowPestDetectionDialog}
+        onSubmit={handlePestDetectionSubmit}
+        isSubmitting={isPestDetectionSubmitting}
       />
     </div>
   );

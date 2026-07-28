@@ -1,6 +1,16 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { environment } from '@/config/environment';
+import {
+  extractDocumentsFromEvent,
+  extractVideosFromEvent,
+  parseAgUiSseBuffer,
+  textDeltaFromEvent,
+  type DocumentResource,
+  type VideoResource,
+} from '@/lib/ag-ui';
+
+export type { VideoResource, DocumentResource };
 
 export interface LocationData {
   latitude: number;
@@ -10,6 +20,17 @@ export interface LocationData {
 export interface ChatResponse {
   response: string;
   status: string;
+  videos?: VideoResource[];
+  documents?: DocumentResource[];
+}
+
+export interface SendUserQueryOptions {
+  userId?: string;
+  onVideos?: (videos: VideoResource[]) => void;
+  /** Retrieved documents (grouped chunks) for the Search Results panel. */
+  onDocuments?: (documents: DocumentResource[]) => void;
+  /** When true (default), stream via AG-UI for inline video support. */
+  useAgUi?: boolean;
 }
 
 export interface TranscriptionResponse {
@@ -20,6 +41,17 @@ export interface TranscriptionResponse {
 
 export interface SuggestionItem {
   question: string;
+}
+
+export interface PestUploadResponse {
+  status: string;
+  id: string;
+  upload_id: string;
+  url: string;
+  crop_id: string;
+  crop_type: string;
+  sowing_date: string;
+  message: string;
 }
 
 interface TTSResponse {
@@ -115,12 +147,26 @@ class ApiService {
     session: string,
     sourceLang: string,
     targetLang: string,
-    onStreamData?: (data: string) => void
+    onStreamData?: (data: string) => void,
+    options?: SendUserQueryOptions
   ): Promise<ChatResponse> {
     try {
       this.refreshAuthToken();
       if (!this.validateAuth()) {
         return { response: "Authentication error", status: "error" };
+      }
+
+      const useAgUi = options?.useAgUi !== false;
+
+      if (onStreamData && useAgUi) {
+        return this.sendUserQueryAgUi(
+          msg,
+          session,
+          sourceLang,
+          targetLang,
+          onStreamData,
+          options
+        );
       }
       
       const params = {
@@ -134,7 +180,7 @@ class ApiService {
       const headers = this.getAuthHeaders();
 
       if (onStreamData) {
-        // Handle streaming response
+        // Legacy plain-text stream (GET /api/chat/)
         const endpointPath = '/api/chat/';
         const apiParams: Record<string, string> = { ...params } as Record<string, string>;
 
@@ -198,6 +244,172 @@ class ApiService {
       console.error('Error sending user query:', error);
       throw error;
     }
+  }
+
+  /**
+   * Stream chat via AG-UI SSE (POST /api/ag-ui/chat).
+   * Emits text deltas and optional related_videos for inline players.
+   */
+  private async sendUserQueryAgUi(
+    msg: string,
+    session: string,
+    sourceLang: string,
+    targetLang: string,
+    onStreamData: (data: string) => void,
+    options?: SendUserQueryOptions
+  ): Promise<ChatResponse> {
+    const body = {
+      query: msg,
+      session_id: session,
+      source_lang: sourceLang,
+      target_lang: targetLang,
+      user_id: options?.userId || 'anonymous',
+    };
+
+    const response = await fetch(`${this.apiUrl}/api/ag-ui/chat`, {
+      method: 'POST',
+      headers: {
+        ...this.getAuthHeaders(),
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        const error = new Error('Rate limit exceeded');
+        (error as any).status = 429;
+        throw error;
+      }
+      // Fall back to classic chat if AG-UI endpoint is missing on older backends.
+      if (response.status === 404 || response.status === 405) {
+        console.warn('AG-UI chat unavailable; falling back to /api/chat/');
+        return this.sendUserQuery(msg, session, sourceLang, targetLang, onStreamData, {
+          ...options,
+          useAgUi: false,
+        });
+      }
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('Response body is not readable');
+    }
+
+    let fullResponse = '';
+    let videos: VideoResource[] = [];
+    let documents: DocumentResource[] = [];
+    let sseBuffer = '';
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const { events, rest } = parseAgUiSseBuffer(sseBuffer, chunk);
+      sseBuffer = rest;
+
+      for (const event of events) {
+        if (event.type === 'RUN_ERROR') {
+          const message =
+            typeof event.message === 'string' ? event.message : 'AG-UI stream error';
+          throw new Error(message);
+        }
+
+        const delta = textDeltaFromEvent(event);
+        if (delta) {
+          fullResponse += delta;
+          onStreamData(delta);
+        }
+
+        const extracted = extractVideosFromEvent(event);
+        if (extracted?.length) {
+          videos = extracted;
+          options?.onVideos?.(extracted);
+        }
+
+        const extractedDocuments = extractDocumentsFromEvent(event);
+        if (extractedDocuments?.length) {
+          documents = extractedDocuments;
+          options?.onDocuments?.(extractedDocuments);
+        }
+      }
+    }
+
+    // Flush any trailing complete frame (rare, but safe).
+    if (sseBuffer.trim()) {
+      const { events } = parseAgUiSseBuffer(sseBuffer, '\n\n');
+      for (const event of events) {
+        const delta = textDeltaFromEvent(event);
+        if (delta) {
+          fullResponse += delta;
+          onStreamData(delta);
+        }
+        const extracted = extractVideosFromEvent(event);
+        if (extracted?.length) {
+          videos = extracted;
+          options?.onVideos?.(extracted);
+        }
+        const extractedDocuments = extractDocumentsFromEvent(event);
+        if (extractedDocuments?.length) {
+          documents = extractedDocuments;
+          options?.onDocuments?.(extractedDocuments);
+        }
+      }
+    }
+
+    return {
+      response: fullResponse,
+      status: 'success',
+      videos: videos.length ? videos : undefined,
+      documents: documents.length ? documents : undefined,
+    };
+  }
+
+  async uploadPestImage(
+    image: File,
+    cropId: string,
+    cropType: string,
+    sowingDate: string
+  ): Promise<PestUploadResponse> {
+    this.refreshAuthToken();
+    if (!this.validateAuth()) {
+      throw new Error('Authentication required');
+    }
+
+    const formData = new FormData();
+    formData.append('image', image, image.name || 'crop-image.jpg');
+    formData.append('crop_id', cropId.trim());
+    formData.append('crop_type', cropType.trim().toLowerCase());
+    formData.append('sowing_date', sowingDate);
+
+    const response = await fetch(`${this.apiUrl}/api/upload/`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Upload failed (${response.status}): ${errorBody}`);
+    }
+
+    return response.json() as Promise<PestUploadResponse>;
+  }
+
+  async getPestDetectionCrops(): Promise<unknown> {
+    this.refreshAuthToken();
+    if (!this.validateAuth()) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await this.axiosInstance.get('/api/pest-detection/crops', {
+      headers: this.getAuthHeaders()
+    });
+    return response.data;
   }
 
   async getSuggestions(session: string, targetLang: string = 'mr'): Promise<SuggestionItem[]> {
@@ -314,4 +526,4 @@ class ApiService {
 
 // Create a singleton instance
 const apiService = new ApiService();
-export default apiService; 
+export default apiService;

@@ -1,0 +1,286 @@
+/**
+ * AG-UI SSE helpers for chat streaming and related-video payloads.
+ * Matches the mh-oan-api /api/ag-ui/chat event shape.
+ */
+
+export interface VideoResource {
+  id: string;
+  title: string;
+  url: string;
+  provider?: string;
+  embed_url?: string | null;
+  thumbnail_url?: string | null;
+  description?: string | null;
+  source?: string | null;
+}
+
+/** A single retrieved chunk (one Marqo row) shown under its document. */
+export interface ChunkResource {
+  id: string;
+  text: string;
+  score?: number;
+}
+
+/** A retrieved document plus the chunks of it that came back this turn. */
+export interface DocumentResource {
+  id: string;
+  title: string;
+  source?: string | null;
+  chunks: ChunkResource[];
+  score?: number;
+}
+
+export type AgUiEvent = {
+  type: string;
+  [key: string]: unknown;
+};
+
+/**
+ * Parse an SSE chunk, keeping any incomplete trailing frame in `rest`.
+ */
+export function parseAgUiSseBuffer(
+  buffer: string,
+  chunk: string
+): { events: AgUiEvent[]; rest: string } {
+  const combined = buffer + chunk;
+  const parts = combined.split("\n\n");
+  const rest = parts.pop() ?? "";
+  const events: AgUiEvent[] = [];
+
+  for (const part of parts) {
+    const lines = part.split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const payload = trimmed.slice(5).trim();
+      if (!payload || payload === "[DONE]") continue;
+      try {
+        events.push(JSON.parse(payload) as AgUiEvent);
+      } catch {
+        // ignore malformed frames
+      }
+    }
+  }
+
+  return { events, rest };
+}
+
+/**
+ * Extract structured videos from CUSTOM related_videos or TOOL_CALL_RESULT.
+ */
+export function extractVideosFromEvent(event: AgUiEvent): VideoResource[] | null {
+  if (event.type === "CUSTOM" && event.name === "related_videos") {
+    const value = event.value as { videos?: VideoResource[] } | undefined;
+    if (value?.videos && Array.isArray(value.videos)) {
+      return value.videos;
+    }
+  }
+
+  if (event.type === "TOOL_CALL_RESULT") {
+    const raw = event.content;
+    try {
+      const content =
+        typeof raw === "string" ? JSON.parse(raw) : (raw as { videos?: VideoResource[] });
+      if (content?.videos && Array.isArray(content.videos)) {
+        return content.videos;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract structured documents (grouped chunks) from CUSTOM related_documents
+ * or TOOL_CALL_RESULT, for grounding validation in the Search Results panel.
+ */
+export function extractDocumentsFromEvent(event: AgUiEvent): DocumentResource[] | null {
+  if (event.type === "CUSTOM" && event.name === "related_documents") {
+    const value = event.value as { documents?: DocumentResource[] } | undefined;
+    if (value?.documents && Array.isArray(value.documents)) {
+      return value.documents;
+    }
+  }
+
+  if (event.type === "TOOL_CALL_RESULT") {
+    const raw = event.content;
+    try {
+      const content =
+        typeof raw === "string" ? JSON.parse(raw) : (raw as { documents?: DocumentResource[] });
+      if (content?.documents && Array.isArray(content.documents)) {
+        return content.documents;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
+}
+
+export function textDeltaFromEvent(event: AgUiEvent): string | null {
+  if (event.type === "TEXT_MESSAGE_CONTENT" && typeof event.delta === "string") {
+    return event.delta;
+  }
+  return null;
+}
+
+const CUE_EN = /for more information,\s*watch the videos below\.?/i;
+const CUE_HI = /अधिक जानकारी के लिए नीचे दिए गए वीडियो देखें।?/;
+const CUE_MR = /अधिक माहितीसाठी खालील व्हिडिओ पहा\.?/;
+
+/** User only asked whether / for videos (not a full advisory). */
+export function isVideoOnlyUserQuery(query?: string): boolean {
+  if (!query?.trim()) return false;
+  const q = query.trim().toLowerCase();
+
+  const videoAsk =
+    /\b(video|videos|clip|youtube)\b/.test(q) ||
+    /वीडियो|व्हिडिओ|विडियो/.test(query);
+
+  if (!videoAsk) return false;
+
+  const advisory =
+    /\b(how|what|when|why|which|manage|control|treat|fertiliz|irrigat|spray|dose|symptom|prevent|grow|cultivat|sowing|pest|disease)\b/.test(
+      q
+    ) ||
+    /कसे|काय|कधी|कसे करावे|नियंत्रण|व्यवस्थापन|खत|सिंचन|रोग|कीड|कैसे|क्या|कब|नियंत्रण|खाद/.test(
+      query
+    );
+
+  if (advisory && /\b(how|what|manage|control|treat)\b/.test(q)) return false;
+
+  if (
+    /^(is there|are there|any|do you have|show me|give me|find|got any)\b.*\b(video|videos)\b/i.test(
+      q
+    ) ||
+    /\b(video|videos)\b.*(on|for|about|of)\b/i.test(q) ||
+    /^(show|play|watch)\b.*\b(video|videos)\b/i.test(q) ||
+    /(कोई वीडियो|व्हिडिओ आहे|वीडियो है|वीडियो दिखा|व्हिडिओ दाखव)/.test(query)
+  ) {
+    return true;
+  }
+
+  if (videoAsk && q.split(/\s+/).length <= 12 && !advisory) {
+    return true;
+  }
+
+  return false;
+}
+
+function stripVideoCueLines(text: string): string {
+  return text
+    .replace(new RegExp(`\\n?${CUE_EN.source}\\n?`, "gi"), "\n")
+    .replace(new RegExp(`\\n?${CUE_HI.source}\\n?`, "g"), "\n")
+    .replace(new RegExp(`\\n?${CUE_MR.source}\\n?`, "g"), "\n");
+}
+
+/**
+ * True when the answer has real advisory content (not only a short video intro).
+ */
+export function hasSubstantiveAnswer(text: string): boolean {
+  let t = text
+    .replace(/\*\*Source:[^*]*\*\*/gi, "")
+    .replace(/\*\*स्रोत:[^*]*\*\*/gi, "");
+  t = stripVideoCueLines(t);
+  t = t.replace(/[#>*_\-•]/g, " ").replace(/\s+/g, " ").trim();
+  return t.length >= 120 || (t.split(/[.!?।]/).filter(Boolean).length >= 2 && t.length >= 80);
+}
+
+function videoCueLine(language?: string): string {
+  const lang = (language || "en").toLowerCase();
+  if (lang === "hi") return "अधिक जानकारी के लिए नीचे दिए गए वीडियो देखें।";
+  if (lang === "mr" || lang === "bhb") return "अधिक माहितीसाठी खालील व्हिडिओ पहा.";
+  return "For more information, watch the videos below.";
+}
+
+/**
+ * Place cue after Source (if any), otherwise before a trailing follow-up question.
+ * Never leave it after the follow-up question.
+ */
+function insertVideoCue(text: string, cue: string): string {
+  let out = stripVideoCueLines(text).replace(/\n{3,}/g, "\n\n").trim();
+
+  // After the last **Source: ...** / **स्रोत: ...** line
+  const sourceRe = /(\*\*(?:Source|स्रोत):[^*\n]+\*\*)/gi;
+  let lastSource: { index: number; length: number } | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = sourceRe.exec(out)) !== null) {
+    lastSource = { index: m.index, length: m[0].length };
+  }
+  if (lastSource) {
+    const insertAt = lastSource.index + lastSource.length;
+    return `${out.slice(0, insertAt)}\n\n${cue}${out.slice(insertAt)}`
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  // Before trailing follow-up question (last paragraph ending with ?)
+  const parts = out.split(/\n\n+/);
+  if (parts.length >= 2) {
+    const last = parts[parts.length - 1].trim();
+    if (/\?\s*$/.test(last) && last.length < 200) {
+      parts.splice(parts.length - 1, 0, cue);
+      return parts.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+    }
+  }
+
+  return `${out}\n\n${cue}`.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * Normalize assistant text around videos:
+ * - Always strip hallucinated video cue when there are no videos
+ * - When videos exist with a full answer: one cue after Source, before follow-up
+ * - When user only asked for videos: no cue
+ */
+export function normalizeVideoMentionText(
+  text: string,
+  hasVideos: boolean,
+  language?: string,
+  userQuery?: string
+): string {
+  if (!text) return text;
+
+  let out = text;
+
+  // Drop common "Related Videos" dumps
+  const sectionPatterns = [
+    /\n{0,2}\*{0,2}Related Videos:?\*{0,2}\s*\n(?:[-*•].+\n?)*/gi,
+    /\n{0,2}\*{0,2}संबंधित वीडियो:?\*{0,2}\s*\n(?:[-*•].+\n?)*/gi,
+    /\n{0,2}\*{0,2}संबंधित व्हिडिओ:?\*{0,2}\s*\n(?:[-*•].+\n?)*/gi,
+  ];
+  for (const re of sectionPatterns) {
+    out = out.replace(re, "\n");
+  }
+
+  out = out.replace(/\n?[-*•]?\s*\[[^\]]+\]\((https?:\/\/[^\s)]+)\)\s*/gi, "\n");
+  out = out.replace(
+    /\n?[^\n]*(?:these videos cover|you can access them|videos are available|guidance videos available)[^\n]*\n?/gi,
+    "\n"
+  );
+
+  // Always remove video-only source lines
+  out = out.replace(/\*\*Source:\s*Video Resource\*\*\s*/gi, "");
+  out = out.replace(/\*\*स्रोत:\s*वीडियो संसाधन\*\*\s*/gi, "");
+  out = out.replace(/\*\*स्रोत:\s*व्हिडिओ संसाधन\*\*\s*/gi, "");
+  out = out.replace(/\*\*Source:\s*[^*\n]*_[^*\n]*\*\*\s*/gi, "");
+  out = out.replace(/\*\*स्रोत:\s*[^*\n]*_[^*\n]*\*\*\s*/gi, "");
+
+  // No inline videos → never show the cue (model sometimes adds it anyway)
+  if (!hasVideos) {
+    return stripVideoCueLines(out).replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  const videoOnlyAsk = isVideoOnlyUserQuery(userQuery);
+  const wantCue = !videoOnlyAsk && hasSubstantiveAnswer(out);
+
+  if (!wantCue) {
+    return stripVideoCueLines(out).replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  // Re-place cue in the correct position (after Source, before follow-up)
+  return insertVideoCue(out, videoCueLine(language));
+}
