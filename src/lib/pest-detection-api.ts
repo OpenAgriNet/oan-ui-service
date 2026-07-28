@@ -1,4 +1,3 @@
-import axios from 'axios';
 import apiService from '@/lib/api';
 
 // ---- Interfaces ----
@@ -20,10 +19,6 @@ interface CropApiItem {
   name_hi?: string;
   crop_name_hi?: string;
 }
-
-// ---- API Base URLs ----
-
-const PEST_FEEDBACK_API_BASE = 'https://farmers-app-api.mahapocra.gov.in';
 
 const asArray = <T>(payload: unknown): T[] => {
   if (Array.isArray(payload)) return payload as T[];
@@ -97,19 +92,11 @@ export async function getCrops(): Promise<CropItem[]> {
 }
 
 /**
- * Store user feedback for a pest detection response (upload id from /api/upload/).
+ * Store user feedback through the authenticated backend relay.
  */
 export async function storePestFeedback(
   uploadId: string,
   feedback: string
 ): Promise<unknown> {
-  const formData = new FormData();
-  formData.append('id', uploadId.trim());
-  formData.append('feedback', feedback.trim());
-
-  const response = await axios.post(
-    `${PEST_FEEDBACK_API_BASE}/pestdetectionServices/store-feedback`,
-    formData
-  );
-  return response.data;
+  return apiService.storePestDetectionFeedback(uploadId, feedback);
 }

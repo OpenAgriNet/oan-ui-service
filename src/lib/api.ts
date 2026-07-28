@@ -254,6 +254,27 @@ class ApiService {
     return response.data;
   }
 
+  async storePestDetectionFeedback(
+    uploadId: string,
+    feedback: string
+  ): Promise<unknown> {
+    this.refreshAuthToken();
+    if (!this.validateAuth()) {
+      throw new Error('Authentication required');
+    }
+
+    const formData = new FormData();
+    formData.append('upload_id', uploadId.trim());
+    formData.append('feedback', feedback.trim());
+
+    const response = await this.axiosInstance.post(
+      '/api/pest-detection/feedback',
+      formData,
+      { headers: this.getAuthHeaders() }
+    );
+    return response.data;
+  }
+
   async getSuggestions(session: string, targetLang: string = 'mr'): Promise<SuggestionItem[]> {
     try {
       this.refreshAuthToken();
