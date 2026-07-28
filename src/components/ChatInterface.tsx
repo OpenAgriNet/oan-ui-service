@@ -39,6 +39,7 @@ interface Message {
   questionText?: string;
   isErrorMessage?: boolean;
   errorTranslationKey?: string;
+  responseLanguage?: string;
   imageUrl?: string;
   isPestDetectionResponse?: boolean;
   pestUploadId?: string;
@@ -127,6 +128,9 @@ export function ChatInterface() {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const inputContainerRef = useRef<HTMLDivElement>(null);
 
+  // Guest limit state
+  const [guestLimitReached, setGuestLimitReached] = useState(false);
+
   const { stopAudio } = useTts();
 
   // Add this effect to update the input height CSS variable
@@ -175,10 +179,29 @@ export function ChatInterface() {
     );
   };
 
-  // Helper to get telemetry uid - returns "guest" for guest users
+  // Helper to get telemetry uid from the JWT user id only.
   const getTelemetryUid = useCallback(() => {
-    return user?.is_guest_user ? "guest" : (user?.username || "default-username");
+    return user?.telemetryUsername || "";
   }, [user]);
+
+  // Notify host app (iframe parent) when guest limit is reached
+  const notifyGuestLimitReached = useCallback((questionsAsked: number) => {
+    try {
+      window.parent.postMessage(
+        {
+          type: 'questions-limit-reached',
+          timestamp: new Date().toISOString(),
+          data: {
+            questionsAsked,
+            limit: environment.guestUserLimit,
+          },
+        },
+        '*'
+      );
+    } catch (e) {
+      console.error('postMessage failed:', e);
+    }
+  }, []);
 
   // Create a session ID
   const createSession = useCallback(() => {
@@ -304,7 +327,8 @@ export function ChatInterface() {
     if (user?.is_guest_user) {
       const guestCount = parseInt(getCookie('guest_question_count') || '0');
       if (guestCount >= environment.guestUserLimit) {
-        window.location.href = '/error?reason=guest_limit';
+        setGuestLimitReached(true);
+        notifyGuestLimitReached(guestCount);
         return;
       }
     }
@@ -359,9 +383,10 @@ export function ChatInterface() {
   const sendMessageToApi = async (text: string, loadingMessageId: string) => {
     // Determine target and source language
     const targetLang = language;
-    let sourceLang = "en"; // Default source language
-    const detectedLanguage = detectIndianLanguage(text);
-    sourceLang = detectedLanguage.code;
+    // Use the selected language directly as source language
+    // (detectIndianLanguage disabled — misdetects bhb as hi since both share Devanagari)
+    // const detectedLanguage = detectIndianLanguage(text);
+    const sourceLang: string = language;
     console.log(sourceLang);
     const questionId = uuidv4();
     startTelemetry(sessionId, { preferred_username: getTelemetryUid(), email: user?.email || "default-email" });
@@ -379,7 +404,8 @@ export function ChatInterface() {
         isLoading: false,
         isStreaming: true,
         questionId,
-        questionText: text
+        questionText: text,
+        responseLanguage: targetLang
       });
       
       const response = await apiService.sendUserQuery(
@@ -395,7 +421,8 @@ export function ChatInterface() {
             text: streamingText,
             isStreaming: true,
             questionId,
-            questionText: text
+            questionText: text,
+            responseLanguage: targetLang
           });
         }
       ) as ChatResponse;
@@ -406,13 +433,18 @@ export function ChatInterface() {
           text: response.response,
           isStreaming: false,
           questionId,
-          questionText: text
+          questionText: text,
+          responseLanguage: targetLang
         });
         
         if (user?.is_guest_user) {
           const guestCount = parseInt(getCookie('guest_question_count') || '0');
           const newCount = guestCount + 1;
           setCookie('guest_question_count', newCount.toString(), 7);
+          if (newCount >= environment.guestUserLimit) {
+            setGuestLimitReached(true);
+            notifyGuestLimitReached(newCount);
+          }
         }
         
         startTelemetry(sessionId, { preferred_username: getTelemetryUid(), email: user?.email || "default-email" });
@@ -431,7 +463,7 @@ export function ChatInterface() {
           errorTranslationKey: 'toast.apiEmptyResponse.description',
           isLoading: false,
         });
-        startTelemetry(sessionId, { preferred_username: user?.username || "default-username", email: user?.email || "default-email" });
+        startTelemetry(sessionId, { preferred_username: getTelemetryUid(), email: user?.email || "default-email" });
         logErrorEvent(questionId, sessionId, "Empty response from API");
         endTelemetry();
       }
@@ -494,7 +526,8 @@ export function ChatInterface() {
           }, 10);
         },
         sessionId,
-        toast
+        toast,
+        language
       );
       
       // Set timeout to stop recording after maxRecordingDuration
@@ -801,7 +834,8 @@ export function ChatInterface() {
           setFeedbackText(prevValue => prevValue + (prevValue ? " " : "") + transcribedText);
         },
         sessionId,
-        toast
+        toast,
+        language
       );
       
       // Set timeout to stop recording after maxRecordingDuration
@@ -855,9 +889,10 @@ export function ChatInterface() {
     if (!user?.is_guest_user) return;
     const guestCount = parseInt(getCookie('guest_question_count') || '0');
     if (guestCount >= environment.guestUserLimit) {
-      window.location.href = '/error?reason=guest_limit';
+      setGuestLimitReached(true);
+      notifyGuestLimitReached(guestCount);
     }
-  }, [user]);
+  }, [user, notifyGuestLimitReached]);
 
   useEffect(() => {
     // Don't auto-scroll when keyboard is open on mobile
@@ -1083,6 +1118,33 @@ export function ChatInterface() {
 
   return (
     <div className="flex flex-col h-full relative p-[0px!important]">
+      {/* Guest limit reached overlay — covers full viewport so nothing bleeds through */}
+      {guestLimitReached && (
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-background px-6 text-center">
+          <div className="rounded-2xl border border-border bg-card p-8 shadow-lg max-w-sm w-full">
+            <div className="text-4xl mb-4">🌾</div>
+            <h2 className="text-xl font-bold text-primary mb-2">
+              {(t("guestLimitTitle") as string) || "Free limit reached"}
+            </h2>
+            <p className="text-muted-foreground text-sm mb-6">
+              {(t("guestLimitDescription") as string) ||
+                "You have used all 10 free questions. Please log in to continue."}
+            </p>
+            <Button
+              className="w-full"
+              onClick={() => {
+                window.parent.postMessage(
+                  { type: 'login-requested', timestamp: new Date().toISOString() },
+                  '*'
+                );
+              }}
+            >
+              {(t("loginToContinue") as string) || "Login / Register"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {messages.length === 0 ? (
         <EmptyStateScreen setInputValue={setInputValue} />
       ) : (
@@ -1131,6 +1193,7 @@ export function ChatInterface() {
                   responseText={message.text}
                   isErrorMessage={message.isErrorMessage}
                   errorTranslationKey={message.errorTranslationKey}
+                  responseLanguage={message.responseLanguage}
                   imageUrl={message.imageUrl}
                 />
               ))}
