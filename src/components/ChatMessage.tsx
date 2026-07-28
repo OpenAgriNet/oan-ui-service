@@ -21,7 +21,6 @@ import {
 import { useTts } from "@/hooks/use-tts";
 import { useLanguage } from "@/components/LanguageProvider";
 import { useAuth } from "@/contexts/AuthContext";
-import { getUserInitials } from "@/lib/user";
 import { RelatedVideos } from "@/components/RelatedVideos";
 import { SearchResultsPanel } from "@/components/SearchResultsPanel";
 import { normalizeVideoMentionText, type DocumentResource, type VideoResource } from "@/lib/ag-ui";
@@ -75,6 +74,10 @@ export function ChatMessage({
   const { t } = useLanguage();
   const { user } = useAuth();
 
+  const getInitials = (username: string) => {
+    return username?.substring(0, 2).toUpperCase() || "U";
+  };
+  
   const handlePlayAudio = () => {
     toggleAudio(message, messageId, responseLanguage);
   };
@@ -328,7 +331,7 @@ export function ChatMessage({
             <>
               <AvatarImage src="" alt="User" />
               <AvatarFallback>
-                {getUserInitials(user?.username)}
+                {getInitials(user?.username || "U")}
               </AvatarFallback>
             </>
           ) : (

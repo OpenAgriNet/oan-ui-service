@@ -123,7 +123,7 @@ export const startTelemetry = (sessionId: string, userDetailsObj: { preferred_us
       },
       channel: "MahaVistaar-" + getHostUrl(),
       sid: sessionId,
-      uid: userDetailsObj['preferred_username'],
+      uid: userDetailsObj['preferred_username'] || "DEFAULT-USER",
       did: userDetailsObj['email'] || "DEFAULT-USER",
       authtoken: "",
       host: "/observability-service",
@@ -327,6 +327,7 @@ export const logFeedbackEvent = (questionId: string, sessionId: string, feedback
 export const endTelemetry = () => {
   Telemetry.end({});
 };
+
 
 
 
