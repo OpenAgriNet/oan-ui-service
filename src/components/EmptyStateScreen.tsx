@@ -9,7 +9,6 @@ const QA_TEMPLATES: Array<{ key: string; vars?: string[] }> = [
   { key: "qa.crop.weeds.management_practices", vars: ["crop"] },
   { key: "qa.livestock.health.mastitis_treatment", vars: ["animal"] },
   { key: "qa.fruit.irrigation.schedule", vars: ["fruit crop"] },
-  { key: "qa.flowers.requirements.sunlight_and_shade", vars: ["Flower crop"] },
   { key: "qa.schemes.machinery.subsidy_how_to_get", vars: ["Scheme name"] }
 ];
 import { useLanguage } from "@/components/LanguageProvider";
