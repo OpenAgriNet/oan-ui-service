@@ -144,7 +144,7 @@
     "livestock.biosecurity.measures": "[animal] वास्ते जैवसुरक्षा नी पद्धत केल्ली हाय?",
     "livestock.health.health_calendar_importance": "[animal] वास्ते आरोग्य दिनदर्शिका कां जरुरी हाय?",
     
-    "weather.forecast.5day": "मारा ईलाका म आगला ५ दाडा नो मौसम अंदाज केंतो हाय?",
+    "weather.forecast.5day": "[district] म आगला ५ दाडा नो मौसम अंदाज केंतो हाय?",
     "weather.rain.tomorrow": "मारा ईलाका म काल वारह (पाऊस) पोडहे का?",
     "weather.alert.hailstorm": "या आठवडो म गारा पोडवा नी वात हाय का?",
     "weather.today.metrics": "आज नो तापमान, आर्द्रता आन् पवन नी गती कतरी हाय?",

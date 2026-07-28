@@ -257,7 +257,7 @@
   "livestock.biosecurity.measures": "[animal] पशुपालनासाठी  जैवसुरक्षा उपाय कोणते आहेत?",
   "livestock.health.health_calendar_importance": "[animal] साठी आरोग्य दिनदर्शिका का महत्त्वाची आहे?",
 
-    "weather.forecast.5day": "माझ्या भागातील पुढील ५ दिवसांचा हवामान अंदाज काय आहे?",
+    "weather.forecast.5day": "[district] मधील पुढील ५ दिवसांचा हवामान अंदाज काय आहे?",
     "weather.rain.tomorrow": "माझ्या भागात उद्या पाऊस पडेल का?",
     "weather.alert.hailstorm": "या आठवड्यात गारपिटीचा इशारा आहे का?",
     "weather.today.metrics": "आजचे तापमान, आर्द्रता आणि वाऱ्याचा वेग किती आहे?",
