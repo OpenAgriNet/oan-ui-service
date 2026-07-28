@@ -7,38 +7,26 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { randomPick, shuffle } from "@/lib/qa-variables";
 import { filterVariableValues } from "@/lib/question-scopes";
 
-type QAVariable = {
-  placeholder: string;
-  source: string;
-};
-
-// Static set of QA templates and the scoped variable lists they use
-const QA_TEMPLATES: Array<{ key: string; vars?: QAVariable[] }> = [
+// Static set of QA templates and the variable placeholders they need
+const QA_TEMPLATES: Array<{ key: string; vars?: string[] }> = [
   {
     key: "qa.weather.forecast.5day",
-    vars: [{ placeholder: "district", source: "district" }]
-  },
-  {
-    key: "qa.crop.weeds.management_practices",
-    vars: [{ placeholder: "crop", source: "suggested weed crop" }]
+    vars: ["district"]
   },
   {
     key: "qa.livestock.health.mastitis_treatment",
-    vars: [{ placeholder: "animal", source: "animal" }]
-  },
-  {
-    key: "qa.crop.irrigation.schedule",
-    vars: [{ placeholder: "crop", source: "suggested irrigation crop" }]
-  },
-  {
-    key: "qa.flowers.requirements.sunlight_and_shade",
-    vars: [{ placeholder: "Flower crop", source: "suggested Flower crop" }]
+    vars: ["animal"]
   },
   {
     key: "qa.schemes.machinery.subsidy_how_to_get",
-    vars: [{ placeholder: "Scheme name", source: "Scheme name" }]
+    vars: ["Scheme name"]
   }
 ];
+
+const isExcludedSuggestion = (key: string) =>
+  key.includes(".irrigation.") ||
+  key.includes(".weed") ||
+  key.startsWith("qa.flower");
 
 interface EmptyStateScreenProps {
   setInputValue: (value: string) => void;
@@ -53,15 +41,19 @@ export function EmptyStateScreen({ setInputValue }: EmptyStateScreenProps) {
 
   // Generate once per language selection (not on each keystroke)
   const questions = useMemo(() => {
-    return shuffle(QA_TEMPLATES)
+    const allowedTemplates = QA_TEMPLATES.filter(
+      ({ key }) => !isExcludedSuggestion(key)
+    );
+
+    return shuffle(allowedTemplates)
       .slice(0, 3)
       .map(({ key, vars }) => {
         const params: Record<string, string> | undefined = vars
           ? Object.fromEntries(
-              vars.map(({ placeholder, source }) => {
-                const rawValues = t(`variables.${source}`) as string[];
-                const scopedValues = filterVariableValues(key, placeholder, rawValues);
-                return [placeholder, randomPick(scopedValues)];
+              vars.map(variable => {
+                const rawValues = t(`variables.${variable}`) as string[];
+                const scopedValues = filterVariableValues(key, variable, rawValues);
+                return [variable, randomPick(scopedValues)];
               })
             )
           : undefined;
