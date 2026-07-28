@@ -1,22 +1,44 @@
 import { Snowflake, Zap, AlertTriangle } from "lucide-react";
 import { useMemo } from "react";
-
-// Static set of QA templates and the variable placeholders they need
-const QA_TEMPLATES: Array<{ key: string; vars?: string[] }> = [
-  { key: "qa.market.price.today", vars: ["crop", "market"] },
-  { key: "qa.market.price.modal", vars: ["crop", "district"] },
-  { key: "qa.weather.forecast.5day" },
-  { key: "qa.crop.weeds.management_practices", vars: ["crop"] },
-  { key: "qa.livestock.health.mastitis_treatment", vars: ["animal"] },
-  { key: "qa.fruit.irrigation.schedule", vars: ["fruit crop"] },
-  { key: "qa.schemes.machinery.subsidy_how_to_get", vars: ["Scheme name"] }
-];
 import { useLanguage } from "@/components/LanguageProvider";
 import { useTheme } from "@/components/ThemeProvider";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { randomPick, shuffle } from "@/lib/qa-variables";
 import { filterVariableValues } from "@/lib/question-scopes";
+
+type QAVariable = {
+  placeholder: string;
+  source: string;
+};
+
+// Static set of QA templates and the scoped variable lists they use
+const QA_TEMPLATES: Array<{ key: string; vars?: QAVariable[] }> = [
+  {
+    key: "qa.weather.forecast.5day",
+    vars: [{ placeholder: "district", source: "district" }]
+  },
+  {
+    key: "qa.crop.weeds.management_practices",
+    vars: [{ placeholder: "crop", source: "suggested weed crop" }]
+  },
+  {
+    key: "qa.livestock.health.mastitis_treatment",
+    vars: [{ placeholder: "animal", source: "animal" }]
+  },
+  {
+    key: "qa.crop.irrigation.schedule",
+    vars: [{ placeholder: "crop", source: "suggested irrigation crop" }]
+  },
+  {
+    key: "qa.flowers.requirements.sunlight_and_shade",
+    vars: [{ placeholder: "Flower crop", source: "suggested Flower crop" }]
+  },
+  {
+    key: "qa.schemes.machinery.subsidy_how_to_get",
+    vars: [{ placeholder: "Scheme name", source: "Scheme name" }]
+  }
+];
 
 interface EmptyStateScreenProps {
   setInputValue: (value: string) => void;
@@ -31,32 +53,22 @@ export function EmptyStateScreen({ setInputValue }: EmptyStateScreenProps) {
 
   // Generate once per language selection (not on each keystroke)
   const questions = useMemo(() => {
-    const VARS = {
-      crop: t("variables.crop") as string[],
-      "fruit crop": t("variables.fruit crop") as string[],
-      "Flower crop": t("variables.Flower crop") as string[],
-      market: t("variables.market") as string[],
-      district: t("variables.district") as string[],
-      animal: t("variables.animal") as string[],
-      "Scheme name": t("variables.Scheme name") as string[]
-    } as const;
-
-  return shuffle(QA_TEMPLATES)
+    return shuffle(QA_TEMPLATES)
       .slice(0, 3)
       .map(({ key, vars }) => {
         const params: Record<string, string> | undefined = vars
           ? Object.fromEntries(
-              vars.map(v => {
-                const rawValues = (VARS as any)[v] as string[];
-                const scopedValues = filterVariableValues(key, v, rawValues);
-                return [v, randomPick(scopedValues)];
+              vars.map(({ placeholder, source }) => {
+                const rawValues = t(`variables.${source}`) as string[];
+                const scopedValues = filterVariableValues(key, placeholder, rawValues);
+                return [placeholder, randomPick(scopedValues)];
               })
             )
           : undefined;
         return t(key, params) as string;
       });
-  // We deliberately depend on `language` so questions regenerate when user switches language.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // We deliberately depend on `language` so questions regenerate when user switches language.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language, t]);
 
   // Capabilities text
@@ -144,4 +156,4 @@ export function EmptyStateScreen({ setInputValue }: EmptyStateScreenProps) {
       {content}
     </ScrollArea>
   ) : content;
-} 
+}
