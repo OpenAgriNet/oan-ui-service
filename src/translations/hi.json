@@ -224,6 +224,24 @@
       "अबोली",
       "गेरबेरा"
     ],
+    "suggested irrigation crop": [
+      "बेर",
+      "काजू",
+      "जामुन",
+      "इमली",
+      "मूली",
+      "गाजर",
+      "मेथी"
+    ],
+    "suggested weed crop": [
+      "कंगनी",
+      "चुकंदर",
+      "मूली"
+    ],
+    "suggested Flower crop": [
+      "अबोली",
+      "गेरबेरा"
+    ],
     "market": [
       "लासलगांव",
       "वाशी",
@@ -289,7 +307,7 @@
     "livestock.breeding.artificial_insemination": "[animal] में कृत्रिम गर्भाधान क्या है?",
     "livestock.biosecurity.measures": "[animal] पालन में कौन-कौन से जैव-सुरक्षा उपाय जरूरी हैं?",
     "livestock.health.health_calendar_importance": "[animal] के लिए स्वास्थ्य कैलेंडर क्यों महत्वपूर्ण है?",
-    "weather.forecast.5day": "मेरे क्षेत्र के अगले 5 दिनों का मौसम पूर्वानुमान क्या है?",
+    "weather.forecast.5day": "[district] में अगले 5 दिनों का मौसम पूर्वानुमान क्या है?",
     "weather.rain.tomorrow": "क्या मेरे क्षेत्र में कल बारिश होगी?",
     "weather.alert.hailstorm": "क्या इस सप्ताह ओलावृष्टि की चेतावनी है?",
     "weather.today.metrics": "आज का तापमान, आर्द्रता और हवा की गति क्या है?",

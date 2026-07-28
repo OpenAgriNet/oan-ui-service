@@ -189,6 +189,24 @@
       "abutilon",
       "gerbera"
     ],
+    "suggested irrigation crop": [
+      "jujube",
+      "cashew nut",
+      "jamun",
+      "tamarind",
+      "radish",
+      "carrot",
+      "fenugreek"
+    ],
+    "suggested weed crop": [
+      "foxtail millet",
+      "beetroot",
+      "radish"
+    ],
+    "suggested Flower crop": [
+      "abutilon",
+      "gerbera"
+    ],
     "market": [
       "Lasalgaon",
       "Vashi",
@@ -256,7 +274,7 @@
     "livestock.biosecurity.measures": "What biosecurity measures are needed in [animal] farms?",
     "livestock.health.health_calendar_importance": "Why is a health calendar important for [animal]?",
 
-    "weather.forecast.5day": "What is the 5-day weather forecast for my area?",
+    "weather.forecast.5day": "What is the 5-day weather forecast for [district]?",
     "weather.rain.tomorrow": "Will it rain tomorrow in my area?",
     "weather.alert.hailstorm": "Is there a hailstorm warning this week?",
     "weather.today.metrics": "What is today’s temperature, humidity, and wind speed?",
