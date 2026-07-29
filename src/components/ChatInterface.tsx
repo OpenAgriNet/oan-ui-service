@@ -140,8 +140,10 @@ export function ChatInterface() {
   // Guest limit state
   const [guestLimitReached, setGuestLimitReached] = useState(false);
 
-  // Search results side panel state (desktop only)
-  const [sidePanelDismissedForMessageId, setSidePanelDismissedForMessageId] = useState<string | null>(null);
+  // Search results side panel state (desktop only). Starts minimized for
+  // every response — only opens once the user explicitly clicks the reopen
+  // tab for that specific message, never automatically.
+  const [sidePanelOpenedForMessageId, setSidePanelOpenedForMessageId] = useState<string | null>(null);
 
   const activeDocsMessage = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -163,13 +165,13 @@ export function ChatInterface() {
     !isMobile &&
     activeGroundedDocuments.length > 0 &&
     !!activeDocsMessage &&
-    sidePanelDismissedForMessageId !== activeDocsMessage.id;
+    sidePanelOpenedForMessageId === activeDocsMessage.id;
 
-  const sidePanelDismissed =
+  const sidePanelMinimized =
     !isMobile &&
     activeGroundedDocuments.length > 0 &&
     !!activeDocsMessage &&
-    sidePanelDismissedForMessageId === activeDocsMessage.id;
+    sidePanelOpenedForMessageId !== activeDocsMessage.id;
 
   const { stopAudio } = useTts();
 
@@ -1290,21 +1292,18 @@ export function ChatInterface() {
       {showSidePanel && activeDocsMessage && (
         <SearchResultsSidePanel
           groundedDocuments={activeGroundedDocuments}
-          onClose={() => setSidePanelDismissedForMessageId(activeDocsMessage.id)}
+          onClose={() => setSidePanelOpenedForMessageId(null)}
         />
       )}
 
-      {sidePanelDismissed && (
+      {sidePanelMinimized && activeDocsMessage && (
         <button
           type="button"
-          onClick={() => setSidePanelDismissedForMessageId(null)}
+          onClick={() => setSidePanelOpenedForMessageId(activeDocsMessage.id)}
           className="hidden lg:flex fixed top-1/2 right-0 -translate-y-1/2 z-20 items-center gap-1.5 rounded-l-lg border border-r-0 border-border bg-background px-2.5 py-3 shadow-md hover:bg-muted/60 transition-colors"
           aria-label="Show search results"
         >
           <FileText className="h-4 w-4 text-muted-foreground" />
-          <span className="text-[10px] font-medium text-muted-foreground [writing-mode:vertical-rl] rotate-180">
-            {activeGroundedDocuments.length}
-          </span>
         </button>
       )}
 
