@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Send, Mic, MicOff, ChevronUp, ChevronLeft, ChevronRight, Info, Leaf, FileText } from "lucide-react";
+import { Send, Mic, MicOff, ChevronUp, ChevronLeft, ChevronRight, Info, Leaf } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -145,13 +145,39 @@ export function ChatInterface() {
   // tab for that specific message, never automatically.
   const [sidePanelOpenedForMessageId, setSidePanelOpenedForMessageId] = useState<string | null>(null);
 
+  // Which message's documents the panel should reflect. Null means "follow
+  // the latest response automatically" (the default); set explicitly when
+  // the user clicks "View search results" on an older message, so going
+  // back to a past answer shows that answer's own sources, not the latest.
+  const [viewedDocsMessageId, setViewedDocsMessageId] = useState<string | null>(null);
+
+  const latestDocsMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (!m.isUser && m.documents && m.documents.length > 0) return m.id;
+    }
+    return null;
+  }, [messages]);
+
+  // A new response arriving should resume auto-following the latest one,
+  // even if the user had pinned an older message's sources earlier.
+  useEffect(() => {
+    setViewedDocsMessageId(null);
+  }, [latestDocsMessageId]);
+
   const activeDocsMessage = useMemo(() => {
+    if (viewedDocsMessageId) {
+      const pinned = messages.find(
+        (m) => m.id === viewedDocsMessageId && !m.isUser && m.documents && m.documents.length > 0
+      );
+      if (pinned) return pinned;
+    }
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
       if (!m.isUser && m.documents && m.documents.length > 0) return m;
     }
     return null;
-  }, [messages]);
+  }, [messages, viewedDocsMessageId]);
 
   const activeGroundedDocuments = useMemo(
     () =>
@@ -166,12 +192,6 @@ export function ChatInterface() {
     activeGroundedDocuments.length > 0 &&
     !!activeDocsMessage &&
     sidePanelOpenedForMessageId === activeDocsMessage.id;
-
-  const sidePanelMinimized =
-    !isMobile &&
-    activeGroundedDocuments.length > 0 &&
-    !!activeDocsMessage &&
-    sidePanelOpenedForMessageId !== activeDocsMessage.id;
 
   const { stopAudio } = useTts();
 
@@ -1281,6 +1301,14 @@ export function ChatInterface() {
                   imageUrl={message.imageUrl}
                   videos={message.videos}
                   documents={message.documents}
+                  onViewSources={
+                    !message.isUser && message.documents && message.documents.length > 0
+                      ? () => {
+                          setViewedDocsMessageId(message.id);
+                          setSidePanelOpenedForMessageId(message.id);
+                        }
+                      : undefined
+                  }
                 />
               ))}
               <div ref={messagesEndRef} className="h-8" />
@@ -1294,17 +1322,6 @@ export function ChatInterface() {
           groundedDocuments={activeGroundedDocuments}
           onClose={() => setSidePanelOpenedForMessageId(null)}
         />
-      )}
-
-      {sidePanelMinimized && activeDocsMessage && (
-        <button
-          type="button"
-          onClick={() => setSidePanelOpenedForMessageId(activeDocsMessage.id)}
-          className="hidden lg:flex fixed top-1/2 right-0 -translate-y-1/2 z-20 items-center gap-1.5 rounded-l-lg border border-r-0 border-border bg-background px-2.5 py-3 shadow-md hover:bg-muted/60 transition-colors"
-          aria-label="Show search results"
-        >
-          <FileText className="h-4 w-4 text-muted-foreground" />
-        </button>
       )}
 
       {/* Render different input containers for mobile vs desktop */}
