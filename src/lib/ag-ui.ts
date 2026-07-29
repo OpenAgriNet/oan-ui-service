@@ -120,6 +120,39 @@ export function extractDocumentsFromEvent(event: AgUiEvent): DocumentResource[] 
   return null;
 }
 
+/**
+ * Merge newly-received documents into previously accumulated ones for a
+ * single response. The backend can call search_documents more than once per
+ * turn (e.g. separate sub-queries), each emitting its own TOOL_CALL_RESULT
+ * with only that call's documents — without merging, only the last call's
+ * results would survive, silently dropping earlier chunks that a Langfuse
+ * trace still shows in full. Same document id: chunks are unioned (by chunk
+ * id, so an identical chunk returned twice isn't duplicated). New document
+ * id: appended.
+ */
+export function mergeDocuments(
+  existing: DocumentResource[] | undefined,
+  incoming: DocumentResource[]
+): DocumentResource[] {
+  const byId = new Map<string, DocumentResource>();
+  for (const doc of existing ?? []) byId.set(doc.id, doc);
+
+  for (const doc of incoming) {
+    const prior = byId.get(doc.id);
+    if (!prior) {
+      byId.set(doc.id, doc);
+      continue;
+    }
+    const chunkIds = new Set(prior.chunks.map((c) => c.id));
+    byId.set(doc.id, {
+      ...prior,
+      chunks: [...prior.chunks, ...doc.chunks.filter((c) => !chunkIds.has(c.id))],
+    });
+  }
+
+  return Array.from(byId.values());
+}
+
 export function textDeltaFromEvent(event: AgUiEvent): string | null {
   if (event.type === "TEXT_MESSAGE_CONTENT" && typeof event.delta === "string") {
     return event.delta;

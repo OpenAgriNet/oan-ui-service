@@ -384,9 +384,6 @@ export function ChatMessage({
                 {!isUser && !isErrorMessage && videos && videos.length > 0 && (
                   <RelatedVideos videos={videos} />
                 )}
-                {!isUser && !isErrorMessage && documents && documents.length > 0 && (
-                  <SearchResultsPanel documents={documents} responseText={displayMessage} />
-                )}
               </div>
             )}
           </div>
