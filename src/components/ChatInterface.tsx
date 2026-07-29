@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Mic, MicOff, ChevronUp, ChevronLeft, ChevronRight, Info, Leaf } from "lucide-react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { Send, Mic, MicOff, ChevronUp, ChevronLeft, ChevronRight, Info, Leaf, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -26,6 +26,9 @@ import { FeedbackForm } from "@/components/FeedbackForm";
 import { useAuth } from "@/contexts/AuthContext";
 import { PestDetectionDialog } from "@/components/PestDetectionDialog";
 import { FALLBACK_CROPS, storePestFeedback } from "@/lib/pest-detection-api";
+import { getGroundedDocuments } from "@/lib/document-grounding";
+import { SearchResultsSidePanel } from "@/components/SearchResultsSidePanel";
+import { mergeDocuments } from "@/lib/ag-ui";
 
 interface Message {
   id: string;
@@ -136,6 +139,37 @@ export function ChatInterface() {
 
   // Guest limit state
   const [guestLimitReached, setGuestLimitReached] = useState(false);
+
+  // Search results side panel state (desktop only)
+  const [sidePanelDismissedForMessageId, setSidePanelDismissedForMessageId] = useState<string | null>(null);
+
+  const activeDocsMessage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (!m.isUser && m.documents && m.documents.length > 0) return m;
+    }
+    return null;
+  }, [messages]);
+
+  const activeGroundedDocuments = useMemo(
+    () =>
+      activeDocsMessage
+        ? getGroundedDocuments(activeDocsMessage.documents ?? [], activeDocsMessage.text)
+        : [],
+    [activeDocsMessage]
+  );
+
+  const showSidePanel =
+    !isMobile &&
+    activeGroundedDocuments.length > 0 &&
+    !!activeDocsMessage &&
+    sidePanelDismissedForMessageId !== activeDocsMessage.id;
+
+  const sidePanelDismissed =
+    !isMobile &&
+    activeGroundedDocuments.length > 0 &&
+    !!activeDocsMessage &&
+    sidePanelDismissedForMessageId === activeDocsMessage.id;
 
   const { stopAudio } = useTts();
 
@@ -449,11 +483,11 @@ export function ChatInterface() {
             });
           },
           onDocuments: (documents) => {
-            streamingDocuments = documents;
+            streamingDocuments = mergeDocuments(streamingDocuments, documents);
             scrollToBottom();
             updateMessage(loadingMessageId, {
               text: streamingText,
-              documents,
+              documents: streamingDocuments,
               isStreaming: true,
               questionId,
               questionText: text,
@@ -472,7 +506,7 @@ export function ChatInterface() {
           questionText: text,
           responseLanguage: targetLang,
           videos: response.videos?.length ? response.videos : streamingVideos,
-          documents: response.documents?.length ? response.documents : streamingDocuments,
+          documents: mergeDocuments(streamingDocuments, response.documents ?? []),
         });
         
         if (user?.is_guest_user) {
@@ -1206,10 +1240,11 @@ export function ChatInterface() {
               }
             }}
             className={cn(
-              isMobile ? 
-                isKeyboardVisible ? "pb-24 md:pb-20" : "pb-32 md:pb-20 mt-20" 
+              isMobile ?
+                isKeyboardVisible ? "pb-24 md:pb-20" : "pb-32 md:pb-20 mt-20"
                 : "pb-24 md:pb-20",
-              messages.length === 1 ? "min-h-[70vh]" : "" // Ensure single message has enough height
+              messages.length === 1 ? "min-h-[70vh]" : "", // Ensure single message has enough height
+              showSidePanel && "lg:mr-[30rem]"
             )}
           >
             <div className={cn(
@@ -1251,12 +1286,36 @@ export function ChatInterface() {
           </div>
         </ScrollArea>
       )}
-      
+
+      {showSidePanel && activeDocsMessage && (
+        <SearchResultsSidePanel
+          groundedDocuments={activeGroundedDocuments}
+          onClose={() => setSidePanelDismissedForMessageId(activeDocsMessage.id)}
+        />
+      )}
+
+      {sidePanelDismissed && (
+        <button
+          type="button"
+          onClick={() => setSidePanelDismissedForMessageId(null)}
+          className="hidden lg:flex fixed top-1/2 right-0 -translate-y-1/2 z-20 items-center gap-1.5 rounded-l-lg border border-r-0 border-border bg-background px-2.5 py-3 shadow-md hover:bg-muted/60 transition-colors"
+          aria-label="Show search results"
+        >
+          <FileText className="h-4 w-4 text-muted-foreground" />
+          <span className="text-[10px] font-medium text-muted-foreground [writing-mode:vertical-rl] rotate-180">
+            {activeGroundedDocuments.length}
+          </span>
+        </button>
+      )}
+
       {/* Render different input containers for mobile vs desktop */}
       {isMobile ? (
         renderMobileInput()
       ) : (
-        <div className="fixed bottom-0 left-0 right-0 bg-background/95 supports-[backdrop-filter]:bg-background/0">
+        <div className={cn(
+          "fixed bottom-0 left-0 right-0 bg-background/95 supports-[backdrop-filter]:bg-background/0",
+          showSidePanel && "lg:right-[30rem]"
+        )}>
           <div className="border-border">
             <div className="p-4">
               <div className="relative max-w-2xl mx-auto">
