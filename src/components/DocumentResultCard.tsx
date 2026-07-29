@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { FileText, ChevronDown } from "lucide-react";
 import type { DocumentResource, ChunkResource } from "@/lib/ag-ui";
 import { cn } from "@/lib/utils";
@@ -6,11 +6,34 @@ import { cn } from "@/lib/utils";
 interface DocumentResultCardProps {
   doc: DocumentResource;
   chunks: ChunkResource[];
+  /** When set, matching substrings are wrapped in a highlight mark. */
+  searchQuery?: string;
   className?: string;
 }
 
-export function DocumentResultCard({ doc, chunks, className }: DocumentResultCardProps) {
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function highlightText(text: string, query: string) {
+  if (!query) return text;
+  const re = new RegExp(`(${escapeRegExp(query)})`, "gi");
+  const parts = text.split(re);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) =>
+    part.toLowerCase() === query.toLowerCase() ? (
+      <mark key={i} className="bg-primary/25 text-foreground rounded px-0.5 not-italic">
+        {part}
+      </mark>
+    ) : (
+      <Fragment key={i}>{part}</Fragment>
+    )
+  );
+}
+
+export function DocumentResultCard({ doc, chunks, searchQuery, className }: DocumentResultCardProps) {
   const [expanded, setExpanded] = useState(true);
+  const query = searchQuery?.trim() ?? "";
 
   return (
     <div
@@ -29,10 +52,14 @@ export function DocumentResultCard({ doc, chunks, className }: DocumentResultCar
           <FileText className="h-3.5 w-3.5" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium leading-snug line-clamp-2 m-0">{doc.title}</p>
+          <p className="text-sm font-medium leading-snug line-clamp-2 m-0">
+            {highlightText(doc.title, query)}
+          </p>
           <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1">
             {doc.source && (
-              <span className="text-xs text-muted-foreground line-clamp-1">{doc.source}</span>
+              <span className="text-xs text-muted-foreground line-clamp-1">
+                {highlightText(doc.source, query)}
+              </span>
             )}
             {chunks.length > 0 && (
               <span className="rounded-full bg-muted px-1.5 py-0 text-[10px] font-medium text-muted-foreground">
@@ -59,7 +86,9 @@ export function DocumentResultCard({ doc, chunks, className }: DocumentResultCar
               <span className="absolute -left-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary/15 text-[9px] font-semibold text-primary ring-2 ring-card">
                 {i + 1}
               </span>
-              <p className="m-0 text-muted-foreground whitespace-pre-wrap">{chunk.text}</p>
+              <p className="m-0 text-muted-foreground whitespace-pre-wrap">
+                {highlightText(chunk.text, query)}
+              </p>
             </div>
           ))}
         </div>

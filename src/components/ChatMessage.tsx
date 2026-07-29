@@ -1,4 +1,4 @@
-import { Volume2, Copy, ThumbsUp, ThumbsDown, User, UserRound, Bot, BotMessageSquare, Loader2 } from "lucide-react";
+import { Volume2, Copy, ThumbsUp, ThumbsDown, User, UserRound, Bot, BotMessageSquare, Loader2, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -44,6 +44,7 @@ interface ChatMessageProps {
   imageUrl?: string;
   videos?: VideoResource[];
   documents?: DocumentResource[];
+  onViewSources?: () => void;
 }
 
 export function ChatMessage({
@@ -65,6 +66,7 @@ export function ChatMessage({
   imageUrl,
   videos,
   documents,
+  onViewSources,
 }: ChatMessageProps) {
   const [isLiked, setIsLiked] = useState(false);
   const [isDisliked, setIsDisliked] = useState(false);
@@ -395,6 +397,24 @@ export function ChatMessage({
               ) : (
                 <>
                   {renderAudioButton()}
+                  {documents && documents.length > 0 && onViewSources && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={onViewSources}
+                          className="h-7 w-7 p-0 rounded-full hover:bg-muted/50"
+                          aria-label="View search results for this response"
+                        >
+                          <FileText className="h-3.5 w-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>View search results</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
