@@ -7,27 +7,6 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { randomPick, shuffle } from "@/lib/qa-variables";
 import { filterVariableValues } from "@/lib/question-scopes";
 
-// Static set of QA templates and the variable placeholders they need
-const QA_TEMPLATES: Array<{ key: string; vars?: string[] }> = [
-  {
-    key: "qa.weather.forecast.5day",
-    vars: ["district"]
-  },
-  {
-    key: "qa.livestock.health.mastitis_treatment",
-    vars: ["animal"]
-  },
-  {
-    key: "qa.schemes.machinery.subsidy_how_to_get",
-    vars: ["Scheme name"]
-  }
-];
-
-const isExcludedSuggestion = (key: string) =>
-  key.includes(".irrigation.") ||
-  key.includes(".weed") ||
-  key.startsWith("qa.flower");
-
 interface EmptyStateScreenProps {
   setInputValue: (value: string) => void;
 }
@@ -41,14 +20,19 @@ export function EmptyStateScreen({ setInputValue }: EmptyStateScreenProps) {
 
   // Generate once per language selection (not on each keystroke)
   const questions = useMemo(() => {
-    const allowedTemplates = QA_TEMPLATES.filter(
-      ({ key }) => !isExcludedSuggestion(key)
-    );
+    const qa = t("qa") as unknown as Record<string, string>;
+    const allowedTemplates = Object.keys(qa)
+      .map(key => ({
+        key: `qa.${key}`,
+        vars: (qa[key].match(/\[(.+?)\]/g) ?? []).map(m => m.slice(1, -1))
+      }))
+      // Skip questions with placeholders that have no variables.* list (e.g. [pest or disease name])
+      .filter(({ vars }) => vars.every(v => Array.isArray(t(`variables.${v}`))));
 
     return shuffle(allowedTemplates)
       .slice(0, 3)
       .map(({ key, vars }) => {
-        const params: Record<string, string> | undefined = vars
+        const params: Record<string, string> | undefined = vars.length
           ? Object.fromEntries(
               vars.map(variable => {
                 const rawValues = t(`variables.${variable}`) as string[];
