@@ -119,5 +119,26 @@
     },
     "retryButton": "पुनः प्रयास करें",
     "appTitle": "भारत विस्तार"
+  },
+  "pestDetection": {
+    "title": "कीट एवं रोग पहचान",
+    "selectCrop": "फसल चुनें",
+    "sowingDate": "बोने की तारीख",
+    "sowingDateHint": "कम से कम एक सप्ताह पहले की बुवाई तारीख चुनें।",
+    "plantPestImage": "पौधे/कीट की छवि",
+    "captureImage": "फोटो लें",
+    "selectFromGallery": "गैलरी से चुनें",
+    "imageFormatHint": "केवल JPEG, PNG और JPG प्रारूप। अधिकतम 10 MB।",
+    "analyzeSubmit": "विश्लेषण करें और सबमिट करें",
+    "analyzing": "आपकी फसल की छवि का विश्लेषण हो रहा है...",
+    "errorGeneric": "छवि का विश्लेषण नहीं हो सका। कृपया पुनः प्रयास करें।",
+    "fileTooLarge": "छवि 10 MB सीमा से अधिक है।",
+    "invalidFormat": "कृपया JPEG, PNG या JPG छवि चुनें।",
+    "compressingImage": "छवि को संपीड़ित किया जा रहा है...",
+    "imageCompressed": "छवि संपीड़ित हो गई",
+    "imageCompressedDescription": "छवि 10 MB से कम कर दी गई है और अपलोड के लिए तैयार है।",
+    "compressionFailed": "छवि को 10 MB से कम नहीं किया जा सका। कृपया छोटी छवि चुनें।",
+    "chatAnalysisPrompt": "अपलोड की गई फसल छवि का कीट और रोग विश्लेषण करें। Image ID: [imageId]. फसल: [cropName]. बुवाई तारीख: [sowingDate]. crop_id: [crop_id]. crop_type: [crop_type].",
+    "uploadError": "छवि अपलोड नहीं हो सकी। कृपया पुनः प्रयास करें।"
   }
-} 
+}

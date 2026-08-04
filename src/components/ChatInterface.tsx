@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Info,
   MicVocal,
+  Leaf,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,6 +57,8 @@ import { FeedbackForm } from "@/components/FeedbackForm";
 import { useAuth } from "@/contexts/AuthContext";
 import VoiceAssistantInline from "@/components/VoiceAssistantInline";
 import { markServerRequestStart } from "@/lib/telemetry";
+import { PestDetectionDialog } from "@/components/PestDetectionDialog";
+import { FALLBACK_CROPS, storePestFeedback } from "@/lib/pest-detection-api";
 
 interface Message {
   id: string;
@@ -74,6 +77,9 @@ interface Message {
   canRetry?: boolean;
   originalUserMessage?: string;
   retryClickCount?: number;
+  imageUrl?: string;
+  isPestDetectionResponse?: boolean;
+  pestUploadId?: string;
 }
 
 interface ChatResponse {
