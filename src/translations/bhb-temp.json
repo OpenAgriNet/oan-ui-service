@@ -41,10 +41,8 @@
     "fruit.postharvest.loss_reduction": "[fruit crop] तोडीये पसी नुकसान कीं रोकी सकाय?",
     "fruit.thinning.definition_importance": "[fruit crop] म फळ कम करवानुं कीं छे अन ती कां जरुरी छे?",
     "fruit.quality.size_improvement": "[fruit crop] नी गोटी अन गुणवत्ता कीं वधारवानि?",
-    "fruit.intercropping.options": "[fruit crop] हाते कसी आंतरपीक लेवाय?",
     "fruit.soil.requirements": "[fruit crop] वास्ते जमीन कसी जोवे?",
     "fruit.postharvest.shelf_life_and_increase": "[fruit crop] केडला दाडी टके छे अन तीने कीं वधारवानुं?",
-    "fruit.nutrients.micronutrient_recommendations": "[fruit crop] वास्ते सूक्ष्मअन्नद्रव्य (नाना पोषण) शिफारस कसी छे?",
     "fruit.bearing.alternate_management": "[fruit crop] म फळधारणा नी व्यवस्था कीं करवानी?",
     "fruit.growth_regulators.role": "[fruit crop] म वधवा रोकवा नी वात कीं छे?",
     "fruit.planting.season_recommended": "[fruit crop] वास्ते शिफारस करेलो वाववा नो मौसम कीं छे?",
@@ -54,7 +52,6 @@
     
     "schemes.pm_kisan.about": "पीएम-किसान योजना कीं छे?",
     "schemes.pmfby.apply": "प्रधानमंत्री फसल विमा योजना वास्ते अर्ज कीं करवानो?",
-    "schemes.agristack.eligibility_check": "ॲग्रीस्टॅक वाप्रिन मु कसी योजना वास्ते लायक छुं ई कीं जोवानुं?",
     "schemes.mahadbt.status_check": "मारा महाडीबीटी अनुदान अर्ज नी स्थिती कीं छे?",
     "schemes.soil_health_card.guidelines": "मृदा आरोग्य पत्रिका योजना ना नियम कीं छे?",
     "schemes.machinery.subsidy_how_to_get": "खेती ना मशीन वास्ते कस्टम हायरिंग सेंटर योजना म अनुदान कीं मळे?",
