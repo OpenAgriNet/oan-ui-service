@@ -28,6 +28,17 @@ export interface SuggestionItem {
   question: string;
 }
 
+export interface PestUploadResponse {
+  status: string;
+  id: string;
+  upload_id: string;
+  url: string;
+  crop_id: string;
+  crop_type: string;
+  sowing_date: string;
+  message: string;
+}
+
 interface TTSResponse {
   status: string;
   audio_data: string;
