@@ -22,6 +22,17 @@ export interface SuggestionItem {
   question: string;
 }
 
+export interface PestUploadResponse {
+  status: string;
+  id: string;
+  upload_id: string;
+  url: string;
+  crop_id: string;
+  crop_type: string;
+  sowing_date: string;
+  message: string;
+}
+
 interface TTSResponse {
   status: string;
   audio_data: string;
@@ -200,6 +211,70 @@ class ApiService {
     }
   }
 
+  async uploadPestImage(
+    image: File,
+    cropId: string,
+    cropType: string,
+    sowingDate: string
+  ): Promise<PestUploadResponse> {
+    this.refreshAuthToken();
+    if (!this.validateAuth()) {
+      throw new Error('Authentication required');
+    }
+
+    const formData = new FormData();
+    formData.append('image', image, image.name || 'crop-image.jpg');
+    formData.append('crop_id', cropId.trim());
+    formData.append('crop_type', cropType.trim().toLowerCase());
+    formData.append('sowing_date', sowingDate);
+
+    const response = await fetch(`${this.apiUrl}/api/upload/`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Upload failed (${response.status}): ${errorBody}`);
+    }
+
+    return response.json() as Promise<PestUploadResponse>;
+  }
+
+  async getPestDetectionCrops(): Promise<unknown> {
+    this.refreshAuthToken();
+    if (!this.validateAuth()) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await this.axiosInstance.get('/api/pest-detection/crops', {
+      headers: this.getAuthHeaders()
+    });
+    return response.data;
+  }
+
+  async storePestDetectionFeedback(
+    uploadId: string,
+    feedback: string
+  ): Promise<unknown> {
+    this.refreshAuthToken();
+    if (!this.validateAuth()) {
+      throw new Error('Authentication required');
+    }
+
+    const formData = new FormData();
+    formData.append('upload_id', uploadId.trim());
+    formData.append('feedback', feedback.trim());
+
+    const response = await this.axiosInstance.post(
+      '/api/pest-detection/feedback',
+      formData,
+      { headers: this.getAuthHeaders() }
+    );
+    return response.data;
+  }
+
   async getSuggestions(session: string, targetLang: string = 'mr'): Promise<SuggestionItem[]> {
     try {
       this.refreshAuthToken();
@@ -314,4 +389,4 @@ class ApiService {
 
 // Create a singleton instance
 const apiService = new ApiService();
-export default apiService; 
+export default apiService;

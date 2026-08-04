@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Mic, MicOff, ChevronUp, ChevronLeft, ChevronRight, Info } from "lucide-react";
+import { Send, Mic, MicOff, ChevronUp, ChevronLeft, ChevronRight, Info, Leaf } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -24,6 +24,8 @@ import { cn } from "@/lib/utils";
 import { useTts } from "@/hooks/use-tts";
 import { FeedbackForm } from "@/components/FeedbackForm";
 import { useAuth } from "@/contexts/AuthContext";
+import { PestDetectionDialog } from "@/components/PestDetectionDialog";
+import { FALLBACK_CROPS, storePestFeedback } from "@/lib/pest-detection-api";
 
 interface Message {
   id: string;
@@ -38,6 +40,9 @@ interface Message {
   isErrorMessage?: boolean;
   errorTranslationKey?: string;
   responseLanguage?: string;
+  imageUrl?: string;
+  isPestDetectionResponse?: boolean;
+  pestUploadId?: string;
 }
 
 interface ChatResponse {
@@ -113,6 +118,10 @@ export function ChatInterface() {
   const feedbackMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const feedbackAudioStreamRef = useRef<MediaStream | null>(null);
   const [feedbackAudioLevel, setFeedbackAudioLevel] = useState(0.5);
+
+  // Pest detection state
+  const [showPestDetectionDialog, setShowPestDetectionDialog] = useState(false);
+  const [isPestDetectionSubmitting, setIsPestDetectionSubmitting] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -559,6 +568,102 @@ export function ChatInterface() {
     }
   };
 
+  const handlePestDetectionSubmit = async (
+    cropId: string,
+    cropName: string,
+    sowingDate: string,
+    image: File,
+    cropNameEnglish?: string
+  ) => {
+    setIsPestDetectionSubmitting(true);
+    setShowPestDetectionDialog(false);
+    setIsMessageLoading(true);
+
+    // Create a URL for the image to display in chat
+    const imageObjectUrl = URL.createObjectURL(image);
+
+    // Resolve English crop name for the API (API requires English names)
+    const englishCrop = FALLBACK_CROPS.find((c) => String(c.crop_id) === cropId);
+    const cropTypeForApi = cropNameEnglish || (englishCrop ? englishCrop.crop_name : cropName);
+    const cropIdForApi = cropId.trim();
+
+    // Add user message with image, crop name and sowing date (right side)
+    if (!inputPositioned) {
+      setInputPositioned(true);
+    }
+    addMessage(
+      `**${cropName}**\n${sowingDate}`,
+      true,
+      { imageUrl: imageObjectUrl }
+    );
+
+    // Add a loading bot message (left side)
+    const loadingMessageId = addMessage("", false, { isLoading: true });
+    scrollToBottomOfMessages();
+
+    try {
+      const upload = await apiService.uploadPestImage(
+        image,
+        cropIdForApi,
+        cropTypeForApi,
+        sowingDate
+      );
+
+      if (upload.status !== "success") {
+        throw new Error(upload.message || "Upload failed");
+      }
+
+      const imageId = upload.id || upload.upload_id;
+
+      updateMessage(loadingMessageId, {
+        isPestDetectionResponse: true,
+        pestUploadId: imageId,
+      });
+
+      const cropIdForChat = upload.crop_id || cropIdForApi;
+      const cropTypeForChat =
+        upload.crop_type || cropTypeForApi.trim().toLowerCase();
+      const chatPrompt =
+        (t("pestDetection.chatAnalysisPrompt", {
+          imageId,
+          cropName,
+          sowingDate,
+          crop_id: cropIdForChat,
+          crop_type: cropTypeForChat,
+        }) as string) ||
+        `Please perform pest and disease analysis for the uploaded crop image. Image ID: ${imageId}. Crop: ${cropName}. Sowing date: ${sowingDate}. crop_id: ${cropIdForChat}. crop_type: ${cropTypeForChat}.`;
+
+      await sendMessageToApi(chatPrompt, loadingMessageId);
+    } catch (error) {
+      console.error("Pest detection failed:", error);
+      const isUploadError = error instanceof Error && error.message.includes("Upload failed");
+      updateMessage(loadingMessageId, {
+        text: "",
+        isLoading: false,
+        isErrorMessage: true,
+        errorTranslationKey: isUploadError
+          ? "pestDetection.uploadError"
+          : "pestDetection.errorGeneric",
+      });
+      forceUIRefresh();
+    } finally {
+      setIsMessageLoading(false);
+      setIsPestDetectionSubmitting(false);
+    }
+  };
+
+  const submitPestFeedbackIfApplicable = async (
+    message: Message,
+    feedback: string
+  ) => {
+    if (!message.isPestDetectionResponse || !message.pestUploadId) return;
+    try {
+      await storePestFeedback(message.pestUploadId, feedback);
+    } catch (error) {
+      console.error("Failed to store pest detection feedback:", error);
+    }
+  };
+
   // Feedback handling
   const handleDislike = (messageId: string, questionText: string, responseText: string) => {
     const message = messages.find(m => m.id === messageId);
@@ -583,6 +688,8 @@ export function ChatInterface() {
     logFeedbackEvent(message.questionId || messageId, sessionId, "Liked the response", "like", message.questionText || "", message.text);
     endTelemetry();
 
+    void submitPestFeedbackIfApplicable(message, "Liked the response");
+
     // Send a generic feedback message
     toast({
       title: t("toast.feedbackThankYou.title") as string,
@@ -602,6 +709,9 @@ export function ChatInterface() {
     startTelemetry(sessionId, { preferred_username: getTelemetryUid(), email: user?.email || "default-email" });
     logFeedbackEvent(message.questionId || dislikedMessageId, sessionId, feedbackText, "dislike", message.questionText || "", message.text);
     endTelemetry();
+
+    void submitPestFeedbackIfApplicable(message, feedbackText);
+
     setShowFeedbackDialog(false);
     setFeedbackText("");
     setDislikedMessageId(null);
@@ -953,6 +1063,16 @@ export function ChatInterface() {
               />
               <div className="flex flex-shrink-0 gap-2">
                 <Button
+                  onClick={() => setShowPestDetectionDialog(true)}
+                  variant="outline"
+                  size="icon"
+                  className="rounded-full flex-shrink-0 h-9 w-9"
+                  aria-label="Pest Detection"
+                  disabled={isMessageLoading}
+                >
+                  <Leaf className="h-4 w-4" />
+                </Button>
+                <Button
                   onClick={toggleRecording}
                   variant={isRecording ? "destructive" : "outline"}
                   size="icon"
@@ -1074,6 +1194,7 @@ export function ChatInterface() {
                   isErrorMessage={message.isErrorMessage}
                   errorTranslationKey={message.errorTranslationKey}
                   responseLanguage={message.responseLanguage}
+                  imageUrl={message.imageUrl}
                 />
               ))}
               <div ref={messagesEndRef} className="h-8" />
@@ -1133,6 +1254,16 @@ export function ChatInterface() {
                     maxRows={6}
                   />
                   <Button
+                    onClick={() => setShowPestDetectionDialog(true)}
+                    variant="outline"
+                    size="icon"
+                    className="rounded-full flex-shrink-0"
+                    aria-label="Pest Detection"
+                    disabled={isMessageLoading}
+                  >
+                    <Leaf className="h-5 w-5" />
+                  </Button>
+                  <Button
                     onClick={toggleRecording}
                     variant={isRecording ? "destructive" : "outline"}
                     size="icon"
@@ -1177,6 +1308,12 @@ export function ChatInterface() {
         toggleFeedbackRecording={toggleFeedbackRecording}
         feedbackAudioLevel={feedbackAudioLevel}
         submitFeedback={submitFeedback}
+      />
+      <PestDetectionDialog
+        open={showPestDetectionDialog}
+        onOpenChange={setShowPestDetectionDialog}
+        onSubmit={handlePestDetectionSubmit}
+        isSubmitting={isPestDetectionSubmitting}
       />
     </div>
   );
