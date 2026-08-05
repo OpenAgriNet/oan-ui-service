@@ -118,5 +118,26 @@
       "description": "Connecting to server..."
     },
     "retryButton": "Retry"
+  },
+  "pestDetection": {
+    "title": "Pest & Disease Identification",
+    "selectCrop": "Select Crop",
+    "sowingDate": "Sowing Date",
+    "sowingDateHint": "Choose a sowing date at least one week ago.",
+    "plantPestImage": "Plant/Pest Image",
+    "captureImage": "Capture Image",
+    "selectFromGallery": "Select From Gallery",
+    "imageFormatHint": "Only JPEG, PNG, and JPG formats are allowed. Max 10 MB.",
+    "analyzeSubmit": "Analyze & Submit",
+    "analyzing": "Analyzing your crop image...",
+    "errorGeneric": "Could not analyze the image. Please try again.",
+    "fileTooLarge": "Image exceeds 10 MB limit.",
+    "invalidFormat": "Please select a JPEG, PNG, or JPG image.",
+    "compressingImage": "Compressing image...",
+    "imageCompressed": "Image compressed",
+    "imageCompressedDescription": "The image was compressed below 10 MB and is ready to upload.",
+    "compressionFailed": "The image could not be compressed below 10 MB. Please choose a smaller image.",
+    "chatAnalysisPrompt": "Please perform pest and disease analysis for the uploaded crop image. Image ID: [imageId]. Crop: [cropName]. Sowing date: [sowingDate]. crop_id: [crop_id]. crop_type: [crop_type].",
+    "uploadError": "Could not upload the image. Please try again."
   }
-} 
+}
