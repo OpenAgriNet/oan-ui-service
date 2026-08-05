@@ -115,5 +115,26 @@
       "description": "माफ करा, मी सध्या तुमच्या विनंतीवर प्रक्रिया करू शकलो नाही."
     },
     "appTitle": "भारत विस्तार"
+  },
+  "pestDetection": {
+    "title": "कीड आणि रोग ओळख",
+    "selectCrop": "पीक निवडा",
+    "sowingDate": "पेरणीची तारीख",
+    "sowingDateHint": "किमान एक आठवड्यापूर्वीची पेरणी तारीख निवडा.",
+    "plantPestImage": "पीक/कीड प्रतिमा",
+    "captureImage": "फोटो घ्या",
+    "selectFromGallery": "गॅलरीतून निवडा",
+    "imageFormatHint": "फक्त JPEG, PNG आणि JPG स्वरूप. कमाल 10 MB.",
+    "analyzeSubmit": "विश्लेषण करा आणि सबमिट करा",
+    "analyzing": "तुमच्या पिकाच्या प्रतिमेचे विश्लेषण होत आहे...",
+    "errorGeneric": "प्रतिमेचे विश्लेषण करता आले नाही. कृपया पुन्हा प्रयत्न करा.",
+    "fileTooLarge": "प्रतिमा 10 MB मर्यादेपेक्षा मोठी आहे.",
+    "invalidFormat": "कृपया JPEG, PNG किंवा JPG प्रतिमा निवडा.",
+    "compressingImage": "प्रतिमा संकुचित केली जात आहे...",
+    "imageCompressed": "प्रतिमा संकुचित झाली",
+    "imageCompressedDescription": "प्रतिमा 10 MB पेक्षा कमी केली आहे आणि अपलोडसाठी तयार आहे.",
+    "compressionFailed": "प्रतिमा 10 MB पेक्षा कमी करता आली नाही. कृपया लहान प्रतिमा निवडा.",
+    "chatAnalysisPrompt": "अपलोड केलेल्या पीक प्रतिमेचे कीड आणि रोग विश्लेषण करा. Image ID: [imageId]. पीक: [cropName]. पेरणी तारीख: [sowingDate]. crop_id: [crop_id]. crop_type: [crop_type].",
+    "uploadError": "प्रतिमा अपलोड करता आली नाही. कृपया पुन्हा प्रयत्न करा."
   }
-} 
+}
