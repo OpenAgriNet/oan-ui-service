@@ -25,7 +25,7 @@ export function RelatedVideos({ videos, className }: RelatedVideosProps) {
   if (!videos?.length) return null;
 
   // No extra "Related Videos" heading — assistant text already says
-  // "For more information, watch the videos below."
+  // "For more information, watch the below video."
   return (
     <div className={cn("mt-3 space-y-3 w-full max-w-full", className)}>
       <div className="flex flex-col gap-3">
