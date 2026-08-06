@@ -83,8 +83,10 @@ export function textDeltaFromEvent(event: AgUiEvent): string | null {
   return null;
 }
 
-const CUE_EN = /for more information,\s*watch the videos below\.?/i;
-const CUE_HI = /अधिक जानकारी के लिए नीचे दिए गए वीडियो देखें।?/;
+const CUE_EN =
+  /for more information,\s*watch (?:the videos below|the below video)\.?/i;
+const CUE_HI =
+  /अधिक जानकारी के लिए नीचे (?:दिए गए वीडियो|दिया गया वीडियो) देखें।?/;
 const CUE_MR = /अधिक माहितीसाठी खालील व्हिडिओ पहा\.?/;
 
 /** User only asked whether / for videos (not a full advisory). */
@@ -147,9 +149,9 @@ export function hasSubstantiveAnswer(text: string): boolean {
 
 function videoCueLine(language?: string): string {
   const lang = (language || "en").toLowerCase();
-  if (lang === "hi") return "अधिक जानकारी के लिए नीचे दिए गए वीडियो देखें।";
+  if (lang === "hi") return "अधिक जानकारी के लिए नीचे दिया गया वीडियो देखें।";
   if (lang === "mr" || lang === "bhb") return "अधिक माहितीसाठी खालील व्हिडिओ पहा.";
-  return "For more information, watch the videos below.";
+  return "For more information, watch the below video.";
 }
 
 /**
