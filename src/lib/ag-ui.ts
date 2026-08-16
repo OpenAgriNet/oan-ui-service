@@ -1,6 +1,9 @@
 /**
- * AG-UI SSE helpers for chat streaming and related-video payloads.
- * Matches the mh-oan-api /api/ag-ui/chat event shape.
+ * Shared AG-UI payload types plus the assistant-text normalisation the chat
+ * bubble applies before rendering.
+ *
+ * SSE framing and event decoding now live in `@ag-ui/client` (see
+ * `src/lib/agui-agent.ts`); this module no longer parses the wire format.
  */
 
 export interface VideoResource {
@@ -28,96 +31,6 @@ export interface DocumentResource {
   source?: string | null;
   chunks: ChunkResource[];
   score?: number;
-}
-
-export type AgUiEvent = {
-  type: string;
-  [key: string]: unknown;
-};
-
-/**
- * Parse an SSE chunk, keeping any incomplete trailing frame in `rest`.
- */
-export function parseAgUiSseBuffer(
-  buffer: string,
-  chunk: string
-): { events: AgUiEvent[]; rest: string } {
-  const combined = buffer + chunk;
-  const parts = combined.split("\n\n");
-  const rest = parts.pop() ?? "";
-  const events: AgUiEvent[] = [];
-
-  for (const part of parts) {
-    const lines = part.split(/\r?\n/);
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-      const payload = trimmed.slice(5).trim();
-      if (!payload || payload === "[DONE]") continue;
-      try {
-        events.push(JSON.parse(payload) as AgUiEvent);
-      } catch {
-        // ignore malformed frames
-      }
-    }
-  }
-
-  return { events, rest };
-}
-
-/**
- * Extract structured videos from CUSTOM related_videos or TOOL_CALL_RESULT.
- */
-export function extractVideosFromEvent(event: AgUiEvent): VideoResource[] | null {
-  if (event.type === "CUSTOM" && event.name === "related_videos") {
-    const value = event.value as { videos?: VideoResource[] } | undefined;
-    if (value?.videos && Array.isArray(value.videos)) {
-      return value.videos;
-    }
-  }
-
-  if (event.type === "TOOL_CALL_RESULT") {
-    const raw = event.content;
-    try {
-      const content =
-        typeof raw === "string" ? JSON.parse(raw) : (raw as { videos?: VideoResource[] });
-      if (content?.videos && Array.isArray(content.videos)) {
-        return content.videos;
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  return null;
-}
-
-/**
- * Extract structured documents (grouped chunks) from CUSTOM related_documents
- * or TOOL_CALL_RESULT, for grounding validation in the Search Results panel.
- */
-export function extractDocumentsFromEvent(event: AgUiEvent): DocumentResource[] | null {
-  if (event.type === "CUSTOM" && event.name === "related_documents") {
-    const value = event.value as { documents?: DocumentResource[] } | undefined;
-    if (value?.documents && Array.isArray(value.documents)) {
-      return value.documents;
-    }
-  }
-
-  if (event.type === "TOOL_CALL_RESULT") {
-    const raw = event.content;
-    try {
-      const content =
-        typeof raw === "string" ? JSON.parse(raw) : (raw as { documents?: DocumentResource[] });
-      if (content?.documents && Array.isArray(content.documents)) {
-        return content.documents;
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  return null;
 }
 
 /**
@@ -151,13 +64,6 @@ export function mergeDocuments(
   }
 
   return Array.from(byId.values());
-}
-
-export function textDeltaFromEvent(event: AgUiEvent): string | null {
-  if (event.type === "TEXT_MESSAGE_CONTENT" && typeof event.delta === "string") {
-    return event.delta;
-  }
-  return null;
 }
 
 const CUE_EN =

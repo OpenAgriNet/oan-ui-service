@@ -1,14 +1,8 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { environment } from '@/config/environment';
-import {
-  extractDocumentsFromEvent,
-  extractVideosFromEvent,
-  parseAgUiSseBuffer,
-  textDeltaFromEvent,
-  type DocumentResource,
-  type VideoResource,
-} from '@/lib/ag-ui';
+import { type DocumentResource, type VideoResource } from '@/lib/ag-ui';
+import { runAgUiChat } from '@/lib/agui-agent';
 
 export type { VideoResource, DocumentResource };
 
@@ -22,6 +16,8 @@ export interface ChatResponse {
   status: string;
   videos?: VideoResource[];
   documents?: DocumentResource[];
+  /** Follow-up chips the agent chose to show via `present_suggestions`. */
+  suggestions?: string[];
 }
 
 export interface SendUserQueryOptions {
@@ -29,6 +25,13 @@ export interface SendUserQueryOptions {
   onVideos?: (videos: VideoResource[]) => void;
   /** Retrieved documents (grouped chunks) for the Search Results panel. */
   onDocuments?: (documents: DocumentResource[]) => void;
+  /**
+   * Follow-up questions streamed by the agent's `present_suggestions` tool.
+   * When this fires, the caller should skip the legacy `/api/suggest/` poll.
+   */
+  onSuggestions?: (questions: string[]) => void;
+  /** Tool lifecycle, for a progress indicator while the agent works. */
+  onToolStart?: (toolName: string) => void;
   /** When true (default), stream via AG-UI for inline video support. */
   useAgUi?: boolean;
 }
@@ -247,8 +250,12 @@ class ApiService {
   }
 
   /**
-   * Stream chat via AG-UI SSE (POST /api/ag-ui/chat).
-   * Emits text deltas and optional related_videos for inline players.
+   * Stream chat over the AG-UI protocol (POST /api/agui) via `@ag-ui/client`.
+   *
+   * `HttpAgent` owns SSE parsing and event typing; `runAgUiChat` maps the
+   * protocol events onto the callbacks this service already exposes. On any
+   * transport failure we degrade to the plain-text `/api/chat/` stream so a
+   * backend that has not shipped the protocol endpoint still works.
    */
   private async sendUserQueryAgUi(
     msg: string,
@@ -258,115 +265,55 @@ class ApiService {
     onStreamData: (data: string) => void,
     options?: SendUserQueryOptions
   ): Promise<ChatResponse> {
-    const body = {
-      query: msg,
-      session_id: session,
-      source_lang: sourceLang,
-      target_lang: targetLang,
-      user_id: options?.userId || 'anonymous',
-    };
+    // Falling back after text has already rendered would replay the whole
+    // answer and duplicate it on screen, so only retry a stream that produced
+    // nothing.
+    let streamedAnything = false;
 
-    const response = await fetch(`${this.apiUrl}/api/ag-ui/chat`, {
-      method: 'POST',
-      headers: {
-        ...this.getAuthHeaders(),
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        const error = new Error('Rate limit exceeded');
-        (error as any).status = 429;
-        throw error;
-      }
-      // Fall back to classic chat if AG-UI endpoint is missing on older backends.
-      if (response.status === 404 || response.status === 405) {
-        console.warn('AG-UI chat unavailable; falling back to /api/chat/');
-        return this.sendUserQuery(msg, session, sourceLang, targetLang, onStreamData, {
-          ...options,
-          useAgUi: false,
-        });
-      }
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error('Response body is not readable');
-    }
-
-    let fullResponse = '';
-    let videos: VideoResource[] = [];
-    let documents: DocumentResource[] = [];
-    let sseBuffer = '';
-    const decoder = new TextDecoder();
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      const chunk = decoder.decode(value, { stream: true });
-      const { events, rest } = parseAgUiSseBuffer(sseBuffer, chunk);
-      sseBuffer = rest;
-
-      for (const event of events) {
-        if (event.type === 'RUN_ERROR') {
-          const message =
-            typeof event.message === 'string' ? event.message : 'AG-UI stream error';
-          throw new Error(message);
-        }
-
-        const delta = textDeltaFromEvent(event);
-        if (delta) {
-          fullResponse += delta;
+    try {
+      const result = await runAgUiChat({
+        url: `${this.apiUrl}/api/agui`,
+        headers: this.getAuthHeaders(),
+        query: msg,
+        sessionId: session,
+        sourceLang,
+        targetLang,
+        userId: options?.userId || 'anonymous',
+        onText: (delta) => {
+          streamedAnything = true;
           onStreamData(delta);
-        }
+        },
+        onVideos: options?.onVideos,
+        onDocuments: options?.onDocuments,
+        onSuggestions: options?.onSuggestions,
+        onToolStart: options?.onToolStart,
+      });
 
-        const extracted = extractVideosFromEvent(event);
-        if (extracted?.length) {
-          videos = extracted;
-          options?.onVideos?.(extracted);
-        }
-
-        const extractedDocuments = extractDocumentsFromEvent(event);
-        if (extractedDocuments?.length) {
-          documents = extractedDocuments;
-          options?.onDocuments?.(extractedDocuments);
-        }
+      return {
+        response: result.text,
+        status: 'success',
+        videos: result.videos,
+        documents: result.documents,
+        suggestions: result.suggestions,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const status = (error as { status?: number })?.status;
+      if (status === 429 || /\b429\b|rate limit/i.test(message)) {
+        const rateLimited = new Error('Rate limit exceeded');
+        (rateLimited as any).status = 429;
+        throw rateLimited;
       }
-    }
 
-    // Flush any trailing complete frame (rare, but safe).
-    if (sseBuffer.trim()) {
-      const { events } = parseAgUiSseBuffer(sseBuffer, '\n\n');
-      for (const event of events) {
-        const delta = textDeltaFromEvent(event);
-        if (delta) {
-          fullResponse += delta;
-          onStreamData(delta);
-        }
-        const extracted = extractVideosFromEvent(event);
-        if (extracted?.length) {
-          videos = extracted;
-          options?.onVideos?.(extracted);
-        }
-        const extractedDocuments = extractDocumentsFromEvent(event);
-        if (extractedDocuments?.length) {
-          documents = extractedDocuments;
-          options?.onDocuments?.(extractedDocuments);
-        }
-      }
-    }
+      if (streamedAnything) throw error;
 
-    return {
-      response: fullResponse,
-      status: 'success',
-      videos: videos.length ? videos : undefined,
-      documents: documents.length ? documents : undefined,
-    };
+      // Older backends have no /api/agui — keep the app usable on plain text.
+      console.warn('AG-UI chat unavailable; falling back to /api/chat/', error);
+      return this.sendUserQuery(msg, session, sourceLang, targetLang, onStreamData, {
+        ...options,
+        useAgUi: false,
+      });
+    }
   }
 
   async uploadPestImage(

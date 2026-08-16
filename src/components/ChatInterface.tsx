@@ -8,7 +8,7 @@ import { ChatMessage } from "@/components/ChatMessage";
 import { useLanguage } from "@/components/LanguageProvider";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { AudioWaveform } from "@/components/AudioWaveform";
-import apiService from "@/lib/api";
+import apiService, { type ChatResponse } from "@/lib/api";
 import { EmptyStateScreen } from "@/components/EmptyStateScreen";
 import { detectIndianLanguage, getCookie, setCookie } from "@/lib/utils";
 import AutoResizeTextarea from "@/components/AutoResizeTextarea";
@@ -28,7 +28,11 @@ import { PestDetectionDialog } from "@/components/PestDetectionDialog";
 import { FALLBACK_CROPS, storePestFeedback } from "@/lib/pest-detection-api";
 import { getGroundedDocuments } from "@/lib/document-grounding";
 import { SearchResultsSidePanel } from "@/components/SearchResultsSidePanel";
-import { mergeDocuments } from "@/lib/ag-ui";
+import {
+  mergeDocuments,
+  type DocumentResource,
+  type VideoResource,
+} from "@/lib/ag-ui";
 
 interface Message {
   id: string;
@@ -46,17 +50,10 @@ interface Message {
   imageUrl?: string;
   isPestDetectionResponse?: boolean;
   pestUploadId?: string;
-  /** Structured videos from AG-UI for inline playback */
-  videos?: import("@/lib/ag-ui").VideoResource[];
+  /** Structured videos the agent attached via `present_video` */
+  videos?: VideoResource[];
   /** Retrieved documents (grouped chunks) from AG-UI for the Search Results panel */
-  documents?: import("@/lib/ag-ui").DocumentResource[];
-}
-
-interface ChatResponse {
-  response: string;
-  status: string;
-  videos?: import("@/lib/ag-ui").VideoResource[];
-  documents?: import("@/lib/ag-ui").DocumentResource[];
+  documents?: DocumentResource[];
 }
 
 interface TranscriptionResponse {
@@ -459,8 +456,9 @@ export function ChatInterface() {
     
     // Handle streaming response (AG-UI: text deltas + optional related videos)
     let streamingText = "";
-    let streamingVideos: import("@/lib/ag-ui").VideoResource[] | undefined;
-    let streamingDocuments: import("@/lib/ag-ui").DocumentResource[] | undefined;
+    let streamingVideos: VideoResource[] | undefined;
+    let streamingDocuments: DocumentResource[] | undefined;
+    let streamingSuggestions: string[] | undefined;
 
     try {
       // Set streaming state to true when we begin receiving message chunks
@@ -516,6 +514,13 @@ export function ChatInterface() {
               responseLanguage: targetLang,
             });
           },
+          // The agent decides its own follow-up chips via `present_suggestions`
+          // and streams them on this turn — no polling needed when it does.
+          onSuggestions: (questions) => {
+            if (!questions.length) return;
+            streamingSuggestions = questions;
+            setNewSuggestion(questions.map((question) => ({ question })));
+          },
         }
       ) as ChatResponse;
 
@@ -544,8 +549,17 @@ export function ChatInterface() {
         startTelemetry(sessionId, { preferred_username: getTelemetryUid(), email: user?.email || "default-email" });
         logResponseEvent(questionId, sessionId, text, response.response);
         endTelemetry();
-        // Fetch new suggestions after the message is sent
-        fetchSuggestions(currentSession);
+
+        // The agent's own chips win. Only poll the legacy /api/suggest/ endpoint
+        // when it chose not to offer any (or the AG-UI path fell back to /chat/).
+        const agentSuggestions = response.suggestions?.length
+          ? response.suggestions
+          : streamingSuggestions;
+        if (agentSuggestions?.length) {
+          setNewSuggestion(agentSuggestions.map((question) => ({ question })));
+        } else {
+          fetchSuggestions(currentSession);
+        }
       } else {
         // Handle empty response
         updateMessage(loadingMessageId, {
