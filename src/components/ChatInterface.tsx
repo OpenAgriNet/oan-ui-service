@@ -485,22 +485,18 @@ export function ChatInterface() {
             questionId,
             questionText: text,
             responseLanguage: targetLang,
-            ...(streamingVideos?.length ? { videos: streamingVideos } : {}),
           });
         },
         {
           userId: user?.username || user?.mobile || "anonymous",
           onVideos: (videos) => {
+            // Buffer only — the `present_video` tool result can arrive at any
+            // point while text is still streaming (timing varies run to
+            // run), so attaching it to the message immediately made the
+            // video render before the text was fully in, inconsistently.
+            // Videos are committed to message state once in the final
+            // update below, after the text stream has completed.
             streamingVideos = videos;
-            scrollToBottom();
-            updateMessage(loadingMessageId, {
-              text: streamingText,
-              videos,
-              isStreaming: true,
-              questionId,
-              questionText: text,
-              responseLanguage: targetLang,
-            });
           },
           onDocuments: (documents) => {
             streamingDocuments = mergeDocuments(streamingDocuments, documents);
