@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Mic, MicOff, ChevronUp, ChevronLeft, ChevronRight, Info, Leaf } from "lucide-react";
+import { Send, Mic, MicOff, ChevronUp, Info, Leaf } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -965,24 +965,6 @@ export function ChatInterface() {
     return cleanup;
   }, [isMobile, isKeyboardVisible]);
 
-  const handlePreviousSuggestion = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation();
-    setCurrentSuggestionIndex(prevIndex => {
-      const newIndex = prevIndex > 0 ? prevIndex - 1 : allSuggestions.length - 1;
-      setCurrentSuggestion(allSuggestions[newIndex]);
-      return newIndex;
-    });
-  };
-
-  const handleNextSuggestion = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation();
-    setCurrentSuggestionIndex(prevIndex => {
-      const nextIndex = (prevIndex + 1) % allSuggestions.length;
-      setCurrentSuggestion(allSuggestions[nextIndex]);
-      return nextIndex;
-    });
-  };
-
   // Render a different input for mobile
   const renderMobileInput = () => {
     // Fix for iOS to ensure the input sticks to the keyboard
@@ -1000,28 +982,10 @@ export function ChatInterface() {
       >
         {currentSuggestion && (
           <div 
-            className="mx-3 mb-2 bg-background/95 p-3 backdrop-blur rounded-lg text-sm cursor-pointer border border-primary hover:border hover:border-primary transition-all"
+            className="mx-3 mb-2 bg-background/95 p-3 backdrop-blur rounded-lg text-sm cursor-pointer border border-primary transition-all"
             onClick={() => handleSuggestionSelect(currentSuggestion)}
           >
-            <div className="flex items-center justify-between">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-6 w-6 rounded-full" 
-                onClick={handlePreviousSuggestion}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <div className="font-medium">{currentSuggestion}</div>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-6 w-6 rounded-full" 
-                onClick={handleNextSuggestion}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
+            <div className="font-medium text-center">{currentSuggestion}</div>
           </div>
         )}
         <div 
@@ -1213,28 +1177,10 @@ export function ChatInterface() {
               <div className="relative max-w-2xl mx-auto">
                 {currentSuggestion && (
                   <div 
-                    className="absolute -top-16 left-4 right-4 bg-background/95 p-3 backdrop-blur rounded-lg text-sm z-10 cursor-pointer hover:border hover:border-primary transition-all"
+                    className="absolute -top-16 left-4 right-4 bg-background/95 p-3 backdrop-blur rounded-lg text-sm z-10 cursor-pointer border border-primary transition-all"
                     onClick={() => handleSuggestionSelect(currentSuggestion)}
                   >
-                    <div className="flex items-center justify-between">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-6 w-6 rounded-full" 
-                        onClick={handlePreviousSuggestion}
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                      <div className="font-medium">{currentSuggestion}</div>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-6 w-6 rounded-full" 
-                        onClick={handleNextSuggestion}
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <div className="font-medium text-center">{currentSuggestion}</div>
                   </div>
                 )}
                 <div className="flex items-center gap-2 bg-background rounded-lg border border-border p-2">
