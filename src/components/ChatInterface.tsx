@@ -60,6 +60,9 @@ interface SuggestionItem {
   question: string;
 }
 
+const normalizeQuestion = (question: string) =>
+  question.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+
 // Audio interfaces
 interface Window {
   webkitAudioContext: typeof AudioContext;
@@ -268,14 +271,17 @@ export function ChatInterface() {
   };
 
   // Fetch suggestions for the chat - only called after a chat response
-  const fetchSuggestions = async (currentSession = sessionId) => {
+  const fetchSuggestions = async (
+    currentSession = sessionId,
+    excludedQuestion = ""
+  ) => {
     // Use the current sessionId or create a new one if needed
     const sessionToUse = currentSession || createSession();
     
     try {
       const suggestions = await apiService.getSuggestions(sessionToUse, language) as SuggestionItem[];
       if (suggestions && suggestions.length > 0) {
-        setNewSuggestion(suggestions);
+        setNewSuggestion(suggestions, excludedQuestion);
       }
     } catch (error) {
       console.error("Failed to fetch suggestions:", error);
@@ -291,13 +297,31 @@ export function ChatInterface() {
     }
   };
 
-  const setNewSuggestion = (suggestions: SuggestionItem[] | { question: string }) => {
+  const setNewSuggestion = (
+    suggestions: SuggestionItem[] | { question: string },
+    excludedQuestion = ""
+  ) => {
     let suggestionsList: string[];
     
     if (Array.isArray(suggestions)) {
       suggestionsList = suggestions.map(s => s.question);
     } else {
       suggestionsList = [suggestions.question];
+    }
+
+    const normalizedExcludedQuestion = normalizeQuestion(excludedQuestion);
+
+    if (normalizedExcludedQuestion) {
+      suggestionsList = suggestionsList.filter(
+        suggestion => normalizeQuestion(suggestion) !== normalizedExcludedQuestion
+      );
+    }
+
+    if (suggestionsList.length === 0) {
+      setAllSuggestions([]);
+      setCurrentSuggestion("");
+      setCurrentSuggestionIndex(0);
+      return;
     }
     
     setAllSuggestions(suggestionsList);
@@ -324,6 +348,8 @@ export function ChatInterface() {
   const handleSendMessage = async () => {
     if (inputValue.trim() === "" || isMessageLoading) return;
 
+    const submittedQuestion = inputValue.trim();
+
     if (user?.is_guest_user) {
       const guestCount = parseInt(getCookie('guest_question_count') || '0');
       if (guestCount >= environment.guestUserLimit) {
@@ -337,8 +363,15 @@ export function ChatInterface() {
       setInputPositioned(true);
     }
     scrollToBottomOfMessages();
+
+    if (normalizeQuestion(submittedQuestion) === normalizeQuestion(currentSuggestion)) {
+      setAllSuggestions([]);
+      setCurrentSuggestion("");
+      setCurrentSuggestionIndex(0);
+    }
+
     // Add user message
-    const userMessageId = addMessage(inputValue, true);
+    const userMessageId = addMessage(submittedQuestion, true);
     
     // Add loading message for bot
     const loadingMessageId = addMessage("", false, { isLoading: true });
@@ -350,7 +383,7 @@ export function ChatInterface() {
     setInputValue("");
 
     try {
-      await sendMessageToApi(inputValue, loadingMessageId);
+      await sendMessageToApi(submittedQuestion, loadingMessageId);
     } catch (error) {
       console.error("Error sending message:", error);
       updateMessage(loadingMessageId, {
@@ -451,7 +484,7 @@ export function ChatInterface() {
         logResponseEvent(questionId, sessionId, text, response.response);
         endTelemetry();
         // Fetch new suggestions after the message is sent
-        fetchSuggestions(currentSession);
+        fetchSuggestions(currentSession, text);
       } else {
         // Handle empty response
         updateMessage(loadingMessageId, {
