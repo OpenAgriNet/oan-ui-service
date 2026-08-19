@@ -407,6 +407,7 @@ export function ChatInterface() {
     
     // Clear input
     setInputValue("");
+    setNewSuggestion([]); // Clear existing suggestions instantly on send
 
     try {
       await sendMessageToApi(inputValue, loadingMessageId);
@@ -515,7 +516,7 @@ export function ChatInterface() {
           onSuggestions: (questions) => {
             if (!questions.length) return;
             streamingSuggestions = questions;
-            setNewSuggestion(questions.map((question) => ({ question })));
+            // setNewSuggestion is deferred until the stream is complete
           },
         }
       ) as ChatResponse;
