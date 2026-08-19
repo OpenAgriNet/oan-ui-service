@@ -327,28 +327,28 @@ export function ChatInterface() {
   };
 
   // Fetch suggestions for the chat - only called after a chat response
-  const fetchSuggestions = async (currentSession = sessionId) => {
-    // Use the current sessionId or create a new one if needed
-    const sessionToUse = currentSession || createSession();
-    
-    try {
-      const suggestions = await apiService.getSuggestions(sessionToUse, language) as SuggestionItem[];
-      if (suggestions && suggestions.length > 0) {
-        setNewSuggestion(suggestions);
-      }
-    } catch (error) {
-      console.error("Failed to fetch suggestions:", error);
-      // Set a fallback suggestion if API fails
-      // const fallbackSuggestions = [
-      //   "What is the weather forecast for tomorrow?",
-      //   "Tell me about PM Kisan Yojana",
-      //   "What is the current market price of wheat?",
-      //   "How to prevent crop diseases during monsoon?",
-      // ];
-      // setNewSuggestion({ question: fallbackSuggestions[Math.floor(Math.random() * fallbackSuggestions.length)] });
-    
-    }
-  };
+  // const fetchSuggestions = async (currentSession = sessionId) => {
+  //   // Use the current sessionId or create a new one if needed
+  //   const sessionToUse = currentSession || createSession();
+  //   
+  //   try {
+  //     const suggestions = await apiService.getSuggestions(sessionToUse, language) as SuggestionItem[];
+  //     if (suggestions && suggestions.length > 0) {
+  //       setNewSuggestion(suggestions);
+  //     }
+  //   } catch (error) {
+  //     console.error("Failed to fetch suggestions:", error);
+  //     // Set a fallback suggestion if API fails
+  //     // const fallbackSuggestions = [
+  //     //   "What is the weather forecast for tomorrow?",
+  //     //   "Tell me about PM Kisan Yojana",
+  //     //   "What is the current market price of wheat?",
+  //     //   "How to prevent crop diseases during monsoon?",
+  //     // ];
+  //     // setNewSuggestion({ question: fallbackSuggestions[Math.floor(Math.random() * fallbackSuggestions.length)] });
+  //   
+  //   }
+  // };
 
   const setNewSuggestion = (suggestions: SuggestionItem[] | { question: string }) => {
     let suggestionsList: string[];
@@ -553,9 +553,10 @@ export function ChatInterface() {
           : streamingSuggestions;
         if (agentSuggestions?.length) {
           setNewSuggestion(agentSuggestions.map((question) => ({ question })));
-        } else {
-          fetchSuggestions(currentSession);
         }
+        // else {
+        //   fetchSuggestions(currentSession);
+        // }
       } else {
         // Handle empty response
         updateMessage(loadingMessageId, {

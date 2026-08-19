@@ -359,32 +359,32 @@ class ApiService {
     return response.data;
   }
 
-  async getSuggestions(session: string, targetLang: string = 'mr'): Promise<SuggestionItem[]> {
-    try {
-      this.refreshAuthToken();
-      if (!this.validateAuth()) {
-        return [];
-      }
-      
-      const params = {
-        session_id: session,
-        target_lang: targetLang
-      };
-
-      const config = {
-        params,
-        headers: this.getAuthHeaders()
-      };
-
-      const response = await this.axiosInstance.get('/api/suggest/', config);
-      return response.data.map((item: string) => ({
-        question: item
-      }));
-    } catch (error) {
-      console.error('Error getting suggestions:', error);
-      throw error;
-    }
-  }
+  // async getSuggestions(session: string, targetLang: string = 'mr'): Promise<SuggestionItem[]> {
+  //   try {
+  //     this.refreshAuthToken();
+  //     if (!this.validateAuth()) {
+  //       return [];
+  //     }
+  //     
+  //     const params = {
+  //       session_id: session,
+  //       target_lang: targetLang
+  //     };
+  // 
+  //     const config = {
+  //       params,
+  //       headers: this.getAuthHeaders()
+  //     };
+  // 
+  //     const response = await this.axiosInstance.get('/api/suggest/', config);
+  //     return response.data.map((item: string) => ({
+  //       question: item
+  //     }));
+  //   } catch (error) {
+  //     console.error('Error getting suggestions:', error);
+  //     throw error;
+  //   }
+  // }
 
   async transcribeAudio(
     audioBase64: string,
