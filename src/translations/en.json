@@ -246,7 +246,6 @@
     "crop.water.management_practices": "What are water management practices for [crop]?",
     "crop.storage.pests_and_control": "What are storage pests of [crop] and their control?",
     "fruit.schemes.available_for_plantations": "What schemes are available for fruit plantations?",
-    "fruit.fruit_load.per_tree_how_many": "How many fruits per tree should be taken in [fruit crop] ?",
     "flowers.greenhouse.benefits": "How can polyhouse or greenhouse benefit  [Flower crop] flower cultivation?"
   },
   "maintenance": {
