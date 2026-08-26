@@ -181,12 +181,21 @@ export function ChatInterface() {
   const activeGroundedDocuments = useMemo(
     () =>
       activeDocsMessage
-        ? getGroundedDocuments(activeDocsMessage.documents ?? [], {
-            responseText: activeDocsMessage.isStreaming ? "" : activeDocsMessage.text,
-            candidates: activeDocsMessage.search?.candidates,
-          })
+        ? getGroundedDocuments(
+            // Prefer curated present_search_results / server grounded_documents.
+            activeDocsMessage.search?.documents?.length
+              ? activeDocsMessage.search.documents
+              : (activeDocsMessage.documents ?? []),
+            {
+              responseText: activeDocsMessage.isStreaming ? "" : activeDocsMessage.text,
+              candidates: activeDocsMessage.search?.candidates,
+              // Fall back to UI language so hi/mr/bhb never take the English filter by mistake.
+              language: activeDocsMessage.responseLanguage || language,
+              serverGrounded: Boolean(activeDocsMessage.search?.serverGrounded),
+            }
+          )
         : [],
-    [activeDocsMessage]
+    [activeDocsMessage, language]
   );
 
   const searchStatus = activeDocsMessage?.search?.status;

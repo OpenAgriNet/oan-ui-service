@@ -10,10 +10,11 @@
  * Payloads we care about ride on ordinary protocol events — no custom transport:
  *   - `present_video`          → TOOL_CALL_RESULT content `{"videos":[…]}`
  *   - `present_suggestions`    → TOOL_CALL_RESULT content `{"questions":[…]}`
- *   - `search_documents` / `search_docs` → TOOL_CALL_START / ARGS (query) for the loading panel
+ *   - `search_documents`       → TOOL_CALL_START / ARGS (query) for the loading panel
  *   - `present_search_results` → TOOL_CALL_RESULT content `{"documents":[…]}`
  *   - `related_search_results` → CUSTOM event, reconciliation / fallback
- *   - `related_documents`      → CUSTOM event, retrieval candidates (cited sources only)
+ *   - `related_documents`      → CUSTOM event, unfiltered retrieval candidates
+ *   - `grounded_documents`     → CUSTOM event, server-filtered docs for the panel
  *
  * Conversation history lives server-side in Redis keyed by session id, so each
  * run sends only the newest user turn and the run's own message list is ignored.

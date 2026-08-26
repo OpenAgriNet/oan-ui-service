@@ -1,19 +1,19 @@
 /**
  * Progressive search-panel state from AG-UI tool/custom events.
- * Curated display: present_search_results / related_search_results.
- * related_documents is stored as candidates for citation filtering.
+ * Display: present_search_results / related_search_results / grounded_documents.
+ * related_documents is stored as candidates (unfiltered retrieval).
  */
 
 import { mergeDocuments, type DocumentResource, type ChunkResource } from "@/lib/ag-ui";
 
 export const SEARCH_DOCUMENTS_TOOL = "search_documents";
-export const SEARCH_DOCS_TOOL = "search_docs";
 export const PRESENT_SEARCH_RESULTS_TOOL = "present_search_results";
 export const RELATED_SEARCH_RESULTS_EVENT = "related_search_results";
 export const RELATED_DOCUMENTS_EVENT = "related_documents";
+/** Server-filtered docs that support the final answer (language-agnostic). */
+export const GROUNDED_DOCUMENTS_EVENT = "grounded_documents";
 
-const SEARCH_TOOLS = new Set([SEARCH_DOCUMENTS_TOOL, SEARCH_DOCS_TOOL]);
-const isSearchTool = (name?: string) => Boolean(name && SEARCH_TOOLS.has(name));
+const isSearchTool = (name?: string) => name === SEARCH_DOCUMENTS_TOOL;
 
 export type SearchPanelStatus = "idle" | "searching" | "results" | "empty" | "error";
 
@@ -36,6 +36,8 @@ export interface SearchPanelSnapshot {
   queries: string[];
   documents: DocumentResource[];
   candidates: DocumentResource[];
+  /** True when `documents` came from server `grounded_documents` (skip client cite-filter). */
+  serverGrounded?: boolean;
   calls: SearchCallSnapshot[];
 }
 
@@ -185,6 +187,7 @@ export function createSearchLifecycle() {
   const presentations = new Map<string, SearchCallState>();
   let documents: DocumentResource[] = [];
   let candidates: DocumentResource[] = [];
+  let serverGrounded = false;
 
   const ensureCall = (id: string): SearchCallState => {
     const existing = calls.get(id);
@@ -224,7 +227,15 @@ export function createSearchLifecycle() {
             : "idle";
     const query =
       searchingCall?.query ?? [...callSnapshots].reverse().find((call) => call.query)?.query;
-    return { status, query, queries, documents, candidates, calls: callSnapshots };
+    return {
+      status,
+      query,
+      queries,
+      documents,
+      candidates,
+      serverGrounded: serverGrounded || undefined,
+      calls: callSnapshots,
+    };
   }
 
   function applyPresentResult(id: string, content: unknown) {
@@ -241,14 +252,31 @@ export function createSearchLifecycle() {
       }
       return;
     }
-    call.documents = mergeDocuments(call.documents, parsed.documents);
-    call.status = parsed.documents.length || call.documents.length ? "results" : "empty";
-    documents = mergeDocuments(documents, parsed.documents);
+    // Agent presentation is provisional; server grounded_documents may replace it.
+    if (!serverGrounded) {
+      call.documents = mergeDocuments(call.documents, parsed.documents);
+      call.status = parsed.documents.length || call.documents.length ? "results" : "empty";
+      documents = mergeDocuments(documents, parsed.documents);
+    }
+  }
+
+  function applyServerGrounded(value: unknown) {
+    const parsed = parseDocumentsPayload(value);
+    if (!parsed.ok) return;
+    serverGrounded = true;
+    documents = parsed.documents;
+    const next = documents.length ? "results" : "empty";
+    calls.forEach((call) => {
+      call.documents = documents;
+      if (call.status === "searching" || call.status === "empty" || call.status === "results") {
+        call.status = next;
+      }
+    });
   }
 
   function reconcile(value: unknown) {
     const parsed = parseDocumentsPayload(value);
-    if (!parsed.ok) return;
+    if (!parsed.ok || serverGrounded) return;
     documents = mergeDocuments(documents, parsed.documents);
     const next = parsed.documents.length || documents.length ? "results" : "empty";
     calls.forEach((call) => {
@@ -293,7 +321,8 @@ export function createSearchLifecycle() {
         break;
       }
       case "CUSTOM": {
-        if (event.name === RELATED_SEARCH_RESULTS_EVENT) reconcile(event.value);
+        if (event.name === GROUNDED_DOCUMENTS_EVENT) applyServerGrounded(event.value);
+        else if (event.name === RELATED_SEARCH_RESULTS_EVENT) reconcile(event.value);
         else if (event.name === RELATED_DOCUMENTS_EVENT) {
           const parsed = parseDocumentsPayload(event.value);
           if (parsed.ok) candidates = mergeDocuments(candidates, parsed.documents);
