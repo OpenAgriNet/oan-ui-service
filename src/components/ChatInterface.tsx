@@ -27,12 +27,25 @@ import { useAuth } from "@/contexts/AuthContext";
 import { PestDetectionDialog } from "@/components/PestDetectionDialog";
 import { FALLBACK_CROPS, storePestFeedback } from "@/lib/pest-detection-api";
 import { getGroundedDocuments } from "@/lib/document-grounding";
-import { SearchResultsSidePanel } from "@/components/SearchResultsSidePanel";
+import { SearchResultsPanel } from "@/components/SearchResultsPanel";
 import {
   mergeDocuments,
   type DocumentResource,
   type VideoResource,
 } from "@/lib/ag-ui";
+import { ACTIVE_SEARCH_STATUSES, type SearchPanelSnapshot, type SearchPanelStatus } from "@/lib/search-lifecycle";
+
+function messageHasSearchPanel(message: Message): boolean {
+  if (message.isUser) return false;
+  return Boolean(message.documents?.length) || ACTIVE_SEARCH_STATUSES.includes(message.search?.status as SearchPanelStatus);
+}
+
+function latestSearchMessage(messages: Message[]) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messageHasSearchPanel(messages[i])) return messages[i];
+  }
+  return null;
+}
 
 interface Message {
   id: string;
@@ -54,6 +67,8 @@ interface Message {
   videos?: VideoResource[];
   /** Retrieved documents (grouped chunks) from AG-UI for the Search Results panel */
   documents?: DocumentResource[];
+  /** Progressive search-panel state for this assistant turn. */
+  search?: SearchPanelSnapshot;
 }
 
 interface TranscriptionResponse {
@@ -137,10 +152,11 @@ export function ChatInterface() {
   // Guest limit state
   const [guestLimitReached, setGuestLimitReached] = useState(false);
 
-  // Search results side panel state (desktop only). Starts minimized for
-  // every response — only opens once the user explicitly clicks the reopen
-  // tab for that specific message, never automatically.
+  // Search results side panel state (desktop only). Opens as soon as
+  // search_documents starts so the user sees a loading panel, and can be
+  // closed or reopened from the message actions.
   const [sidePanelOpenedForMessageId, setSidePanelOpenedForMessageId] = useState<string | null>(null);
+  const dismissedSearchSheetForMessageId = useRef<string | null>(null);
 
   // Which message's documents the panel should reflect. Null means "follow
   // the latest response automatically" (the default); set explicitly when
@@ -148,47 +164,47 @@ export function ChatInterface() {
   // back to a past answer shows that answer's own sources, not the latest.
   const [viewedDocsMessageId, setViewedDocsMessageId] = useState<string | null>(null);
 
-  const latestDocsMessageId = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (!m.isUser && m.documents && m.documents.length > 0) return m.id;
-    }
-    return null;
-  }, [messages]);
+  const latestDocsMessageId = useMemo(() => latestSearchMessage(messages)?.id ?? null, [messages]);
 
-  // A new response arriving should resume auto-following the latest one,
-  // even if the user had pinned an older message's sources earlier.
   useEffect(() => {
     setViewedDocsMessageId(null);
   }, [latestDocsMessageId]);
 
   const activeDocsMessage = useMemo(() => {
     if (viewedDocsMessageId) {
-      const pinned = messages.find(
-        (m) => m.id === viewedDocsMessageId && !m.isUser && m.documents && m.documents.length > 0
-      );
+      const pinned = messages.find((m) => m.id === viewedDocsMessageId && messageHasSearchPanel(m));
       if (pinned) return pinned;
     }
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (!m.isUser && m.documents && m.documents.length > 0) return m;
-    }
-    return null;
+    return latestSearchMessage(messages);
   }, [messages, viewedDocsMessageId]);
 
   const activeGroundedDocuments = useMemo(
     () =>
       activeDocsMessage
-        ? getGroundedDocuments(activeDocsMessage.documents ?? [], activeDocsMessage.text)
+        ? getGroundedDocuments(activeDocsMessage.documents ?? [], {
+            responseText: activeDocsMessage.isStreaming ? "" : activeDocsMessage.text,
+            candidates: activeDocsMessage.search?.candidates,
+          })
         : [],
     [activeDocsMessage]
   );
 
-  const showSidePanel =
-    !isMobile &&
-    activeGroundedDocuments.length > 0 &&
+  const searchStatus = activeDocsMessage?.search?.status;
+  const searchPanelVisible =
     !!activeDocsMessage &&
-    sidePanelOpenedForMessageId === activeDocsMessage.id;
+    sidePanelOpenedForMessageId === activeDocsMessage.id &&
+    (activeGroundedDocuments.length > 0 || ACTIVE_SEARCH_STATUSES.includes(searchStatus as SearchPanelStatus));
+  const showSidePanel = !isMobile && searchPanelVisible;
+
+  const openSources = (id: string) => {
+    dismissedSearchSheetForMessageId.current = null;
+    setViewedDocsMessageId(id);
+    setSidePanelOpenedForMessageId(id);
+  };
+  const closeSources = (id?: string | null) => {
+    if (id) dismissedSearchSheetForMessageId.current = id;
+    setSidePanelOpenedForMessageId(null);
+  };
 
   const { stopAudio } = useTts();
 
@@ -460,6 +476,7 @@ export function ChatInterface() {
     let streamingVideos: VideoResource[] | undefined;
     let streamingDocuments: DocumentResource[] | undefined;
     let streamingSuggestions: string[] | undefined;
+    let streamingSearch: SearchPanelSnapshot | undefined;
 
     try {
       // Set streaming state to true when we begin receiving message chunks
@@ -511,6 +528,31 @@ export function ChatInterface() {
               responseLanguage: targetLang,
             });
           },
+          onSearchUpdate: (search) => {
+            streamingSearch = search;
+            streamingDocuments = mergeDocuments(
+              streamingDocuments,
+              search.documents
+            );
+            updateMessage(loadingMessageId, {
+              text: streamingText,
+              documents: streamingDocuments,
+              search,
+              isStreaming: true,
+              questionId,
+              questionText: text,
+              responseLanguage: targetLang,
+            });
+
+            if (search.status !== "idle") {
+              if (!isMobile || dismissedSearchSheetForMessageId.current !== loadingMessageId) {
+                openSources(loadingMessageId);
+              } else {
+                setViewedDocsMessageId(loadingMessageId);
+              }
+            }
+            scrollToBottom();
+          },
           // The agent decides its own follow-up chips via `present_suggestions`
           // and streams them on this turn — no polling needed when it does.
           onSuggestions: (questions) => {
@@ -531,6 +573,7 @@ export function ChatInterface() {
           responseLanguage: targetLang,
           videos: response.videos?.length ? response.videos : streamingVideos,
           documents: mergeDocuments(streamingDocuments, response.documents ?? []),
+          search: streamingSearch,
         });
         
         if (user?.is_guest_user) {
@@ -1313,13 +1356,9 @@ export function ChatInterface() {
                   imageUrl={message.imageUrl}
                   videos={message.videos}
                   documents={message.documents}
+                  search={message.search}
                   onViewSources={
-                    !message.isUser && message.documents && message.documents.length > 0
-                      ? () => {
-                          setViewedDocsMessageId(message.id);
-                          setSidePanelOpenedForMessageId(message.id);
-                        }
-                      : undefined
+                    messageHasSearchPanel(message) ? () => openSources(message.id) : undefined
                   }
                 />
               ))}
@@ -1329,12 +1368,15 @@ export function ChatInterface() {
         </ScrollArea>
       )}
 
-      {showSidePanel && activeDocsMessage && (
-        <SearchResultsSidePanel
-          groundedDocuments={activeGroundedDocuments}
-          onClose={() => setSidePanelOpenedForMessageId(null)}
-        />
-      )}
+      <SearchResultsPanel
+        open={searchPanelVisible}
+        groundedDocuments={activeGroundedDocuments}
+        search={activeDocsMessage?.search}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen && activeDocsMessage) openSources(activeDocsMessage.id);
+          else closeSources(activeDocsMessage?.id);
+        }}
+      />
 
       {/* Render different input containers for mobile vs desktop */}
       {isMobile ? (

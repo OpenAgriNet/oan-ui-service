@@ -22,8 +22,8 @@ import { useTts } from "@/hooks/use-tts";
 import { useLanguage } from "@/components/LanguageProvider";
 import { useAuth } from "@/contexts/AuthContext";
 import { RelatedVideos } from "@/components/RelatedVideos";
-import { SearchResultsPanel } from "@/components/SearchResultsPanel";
 import { normalizeVideoMentionText, type DocumentResource, type VideoResource } from "@/lib/ag-ui";
+import type { SearchPanelSnapshot } from "@/lib/search-lifecycle";
 
 interface ChatMessageProps {
   message: string;
@@ -44,6 +44,7 @@ interface ChatMessageProps {
   imageUrl?: string;
   videos?: VideoResource[];
   documents?: DocumentResource[];
+  search?: SearchPanelSnapshot;
   onViewSources?: () => void;
 }
 
@@ -65,7 +66,7 @@ export function ChatMessage({
   responseLanguage,
   imageUrl,
   videos,
-  documents,
+  search,
   onViewSources,
 }: ChatMessageProps) {
   const [isLiked, setIsLiked] = useState(false);
@@ -140,6 +141,30 @@ export function ChatMessage({
     hr: () => (
       <hr className="border-none h-px my-4 bg-primary/30 dark:bg-primary/40" />
     ),
+  };
+
+  const renderSourcesChip = () => {
+    if (!onViewSources) return null;
+    const searching = search?.status === "searching";
+    return (
+      <button
+        type="button"
+        onClick={onViewSources}
+        className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary active:bg-primary/15"
+        aria-label={(t("viewSources") as string) || "View sources"}
+      >
+        {searching ? (
+          <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin" />
+        ) : (
+          <FileText className="h-3.5 w-3.5 flex-shrink-0" />
+        )}
+        <span className="truncate">
+          {searching
+            ? ((t("searchSearching") as string) || "Searching")
+            : ((t("viewSources") as string) || "View sources")}
+        </span>
+      </button>
+    );
   };
 
   const renderStreamingIndicator = () => (
@@ -219,10 +244,8 @@ export function ChatMessage({
               {!isUser && !isErrorMessage && videos && videos.length > 0 && (
                 <RelatedVideos videos={videos} />
               )}
-              {!isUser && !isErrorMessage && documents && documents.length > 0 && (
-                <SearchResultsPanel documents={documents} responseText={displayMessage} />
-              )}
             </div>
+            {renderSourcesChip()}
             
             <div className="flex items-center justify-start gap-3 mt-4">
               {isStreaming && !isErrorMessage ? (
@@ -397,7 +420,7 @@ export function ChatMessage({
               ) : (
                 <>
                   {renderAudioButton()}
-                  {documents && documents.length > 0 && onViewSources && (
+                  {onViewSources && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button

@@ -8,20 +8,23 @@
  * actually makes them rather than being replayed after the text.
  *
  * Payloads we care about ride on ordinary protocol events — no custom transport:
- *   - `present_video`       → TOOL_CALL_RESULT content `{"videos":[…]}`
- *   - `present_suggestions` → TOOL_CALL_RESULT content `{"questions":[…]}`
- *   - retrieved documents   → CUSTOM event `related_documents`
+ *   - `present_video`          → TOOL_CALL_RESULT content `{"videos":[…]}`
+ *   - `present_suggestions`    → TOOL_CALL_RESULT content `{"questions":[…]}`
+ *   - `search_documents` / `search_docs` → TOOL_CALL_START / ARGS (query) for the loading panel
+ *   - `present_search_results` → TOOL_CALL_RESULT content `{"documents":[…]}`
+ *   - `related_search_results` → CUSTOM event, reconciliation / fallback
+ *   - `related_documents`      → CUSTOM event, retrieval candidates (cited sources only)
  *
  * Conversation history lives server-side in Redis keyed by session id, so each
  * run sends only the newest user turn and the run's own message list is ignored.
  */
 
 import { HttpAgent, type AgentSubscriber, type Message } from "@ag-ui/client";
+import { type DocumentResource, type VideoResource } from "@/lib/ag-ui";
 import {
-  mergeDocuments,
-  type DocumentResource,
-  type VideoResource,
-} from "@/lib/ag-ui";
+  createSearchLifecycle,
+  type SearchPanelSnapshot,
+} from "@/lib/search-lifecycle";
 
 export interface RunAgUiChatOptions {
   /** Absolute URL of the AG-UI endpoint, e.g. https://host/api/agui */
@@ -36,6 +39,8 @@ export interface RunAgUiChatOptions {
   onVideos?: (videos: VideoResource[]) => void;
   onDocuments?: (documents: DocumentResource[]) => void;
   onSuggestions?: (questions: string[]) => void;
+  /** Progressive search-panel state from search_documents / present_search_results. */
+  onSearchUpdate?: (snapshot: SearchPanelSnapshot) => void;
   /** Tool lifecycle, for a "looking things up…" indicator. */
   onToolStart?: (toolName: string) => void;
   signal?: AbortSignal;
@@ -82,6 +87,7 @@ export async function runAgUiChat(options: RunAgUiChatOptions): Promise<AgUiChat
     onVideos,
     onDocuments,
     onSuggestions,
+    onSearchUpdate,
     onToolStart,
     signal,
   } = options;
@@ -115,6 +121,16 @@ export async function runAgUiChat(options: RunAgUiChatOptions): Promise<AgUiChat
   let documents: DocumentResource[] | undefined;
   let suggestions: string[] = [];
   let streamError: Error | null = null;
+  const searchLifecycle = createSearchLifecycle();
+
+  const emitSearch = (snapshot: SearchPanelSnapshot) => {
+    if (snapshot.status === "idle") return;
+    onSearchUpdate?.(snapshot);
+    if (snapshot.documents.length) {
+      documents = snapshot.documents;
+      onDocuments?.(documents);
+    }
+  };
 
   const subscriber: AgentSubscriber = {
     onTextMessageContentEvent: ({ event }) => {
@@ -125,9 +141,35 @@ export async function runAgUiChat(options: RunAgUiChatOptions): Promise<AgUiChat
 
     onToolCallStartEvent: ({ event }) => {
       onToolStart?.(event.toolCallName);
+      emitSearch(
+        searchLifecycle.apply({
+          type: "TOOL_CALL_START",
+          toolCallId: event.toolCallId,
+          toolCallName: event.toolCallName,
+        })
+      );
+    },
+
+    onToolCallArgsEvent: ({ event, partialToolCallArgs }) => {
+      emitSearch(
+        searchLifecycle.apply({
+          type: "TOOL_CALL_ARGS",
+          toolCallId: event.toolCallId,
+          delta: event.delta,
+          partialArgs: partialToolCallArgs,
+        })
+      );
     },
 
     onToolCallResultEvent: ({ event }) => {
+      emitSearch(
+        searchLifecycle.apply({
+          type: "TOOL_CALL_RESULT",
+          toolCallId: event.toolCallId,
+          content: event.content,
+        })
+      );
+
       const payload = parseToolResult(event.content);
       if (!payload) return;
 
@@ -144,15 +186,22 @@ export async function runAgUiChat(options: RunAgUiChatOptions): Promise<AgUiChat
     },
 
     onCustomEvent: ({ event }) => {
-      if (event.name !== "related_documents") return;
-      const value = event.value as { documents?: DocumentResource[] } | undefined;
-      if (!Array.isArray(value?.documents) || !value.documents.length) return;
-      documents = mergeDocuments(documents, value.documents);
-      onDocuments?.(documents);
+      emitSearch(
+        searchLifecycle.apply({
+          type: "CUSTOM",
+          name: event.name,
+          value: event.value,
+        })
+      );
     },
 
     onRunErrorEvent: ({ event }) => {
       streamError = new Error(event.message || "AG-UI stream error");
+      emitSearch(searchLifecycle.apply({ type: "RUN_ERROR" }));
+    },
+
+    onRunFinishedEvent: () => {
+      emitSearch(searchLifecycle.apply({ type: "RUN_FINISHED" }));
     },
   };
 

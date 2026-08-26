@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { environment } from '@/config/environment';
 import { type DocumentResource, type VideoResource } from '@/lib/ag-ui';
 import { runAgUiChat } from '@/lib/agui-agent';
+import type { SearchPanelSnapshot } from '@/lib/search-lifecycle';
 
 export type { VideoResource, DocumentResource };
 
@@ -30,6 +31,8 @@ export interface SendUserQueryOptions {
    * When this fires, the caller should skip the legacy `/api/suggest/` poll.
    */
   onSuggestions?: (questions: string[]) => void;
+  /** Progressive search-panel state from streamed AG-UI search tool events. */
+  onSearchUpdate?: (snapshot: SearchPanelSnapshot) => void;
   /** Tool lifecycle, for a progress indicator while the agent works. */
   onToolStart?: (toolName: string) => void;
   /** When true (default), stream via AG-UI for inline video support. */
@@ -286,7 +289,13 @@ class ApiService {
         onVideos: options?.onVideos,
         onDocuments: options?.onDocuments,
         onSuggestions: options?.onSuggestions,
-        onToolStart: options?.onToolStart,
+        onSearchUpdate: options?.onSearchUpdate,
+        onToolStart: (toolName) => {
+          // A streamed tool event already changed the UI. Do not replay the
+          // turn through the legacy endpoint if the AG-UI stream later fails.
+          streamedAnything = true;
+          options?.onToolStart?.(toolName);
+        },
       });
 
       return {

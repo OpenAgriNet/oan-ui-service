@@ -1,0 +1,318 @@
+/**
+ * Progressive search-panel state from AG-UI tool/custom events.
+ * Curated display: present_search_results / related_search_results.
+ * related_documents is stored as candidates for citation filtering.
+ */
+
+import { mergeDocuments, type DocumentResource, type ChunkResource } from "@/lib/ag-ui";
+
+export const SEARCH_DOCUMENTS_TOOL = "search_documents";
+export const SEARCH_DOCS_TOOL = "search_docs";
+export const PRESENT_SEARCH_RESULTS_TOOL = "present_search_results";
+export const RELATED_SEARCH_RESULTS_EVENT = "related_search_results";
+export const RELATED_DOCUMENTS_EVENT = "related_documents";
+
+const SEARCH_TOOLS = new Set([SEARCH_DOCUMENTS_TOOL, SEARCH_DOCS_TOOL]);
+const isSearchTool = (name?: string) => Boolean(name && SEARCH_TOOLS.has(name));
+
+export type SearchPanelStatus = "idle" | "searching" | "results" | "empty" | "error";
+
+export const ACTIVE_SEARCH_STATUSES: SearchPanelStatus[] = [
+  "searching",
+  "results",
+  "empty",
+  "error",
+];
+
+export interface SearchCallSnapshot {
+  toolCallId: string;
+  query?: string;
+  status: Exclude<SearchPanelStatus, "idle">;
+}
+
+export interface SearchPanelSnapshot {
+  status: SearchPanelStatus;
+  query?: string;
+  queries: string[];
+  documents: DocumentResource[];
+  candidates: DocumentResource[];
+  calls: SearchCallSnapshot[];
+}
+
+export function getSearchStatusText(
+  t: (key: string) => unknown,
+  status: SearchPanelStatus,
+  count: number
+): string {
+  if (status === "searching") return (t("searchSearching") as string) || "Searching";
+  if (status === "error") return (t("searchFailed") as string) || "Search failed";
+  if (status === "empty" || (status === "results" && !count)) {
+    return (t("searchNoResults") as string) || "No results";
+  }
+  const key = count === 1 ? "searchSource" : "searchSources";
+  return `${count} ${(t(key) as string) || (count === 1 ? "source" : "sources")}`;
+}
+
+export type SearchLifecycleEvent =
+  | { type: "TOOL_CALL_START"; toolCallId: string; toolCallName: string }
+  | { type: "TOOL_CALL_ARGS"; toolCallId: string; delta?: string; partialArgs?: unknown }
+  | { type: "TOOL_CALL_RESULT"; toolCallId: string; content: unknown }
+  | { type: "CUSTOM"; name: string; value: unknown }
+  | { type: "RUN_ERROR" }
+  | { type: "RUN_FINISHED" };
+
+interface SearchCallState {
+  toolCallId: string;
+  query?: string;
+  argsBuffer: string;
+  status: Exclude<SearchPanelStatus, "idle">;
+  documents: DocumentResource[];
+  presentToolCallId?: string;
+}
+
+type JsonObject = Record<string, unknown>;
+const asRecord = (value: unknown): JsonObject | null =>
+  value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : null;
+
+const text = (...values: unknown[]) => {
+  const value = values.find((item) => typeof item === "string" && item.trim());
+  return typeof value === "string" ? value.trim() : undefined;
+};
+
+const score = (...values: unknown[]) =>
+  values.find((value): value is number => typeof value === "number");
+
+export function isUsableHttpUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export function extractSearchQuery(args: unknown): string | undefined {
+  if (typeof args === "string") {
+    const trimmed = args.trim();
+    if (!trimmed) return undefined;
+    try {
+      return extractSearchQuery(JSON.parse(trimmed));
+    } catch {
+      const match = trimmed.match(/"query"\s*:\s*"((?:\\.|[^"\\])*)(?:"|$)/);
+      if (!match) return undefined;
+      try {
+        return JSON.parse(`"${match[1]}"`) as string;
+      } catch {
+        return match[1].replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+      }
+    }
+  }
+  const record = asRecord(args);
+  return record ? text(record.query) : undefined;
+}
+
+function normalizeChunk(raw: unknown, fallbackId: string): ChunkResource | null {
+  if (typeof raw === "string") return raw.trim() ? { id: fallbackId, text: raw.trim() } : null;
+  const record = asRecord(raw);
+  const chunkText = record && text(record.text);
+  return record && chunkText
+    ? { id: text(record.id) ?? fallbackId, text: chunkText, score: score(record.score) }
+    : null;
+}
+
+export function normalizeDocument(raw: unknown, index = 0): DocumentResource | null {
+  const record = asRecord(raw);
+  if (!record) return null;
+  const title = text(record.title, record.name);
+  const id = text(record.id, record.document_id) ?? title ?? `doc-${index}`;
+  const source = text(record.source) ?? null;
+  const url = [record.url, record.source_url].find(isUsableHttpUrl)?.trim() ?? null;
+  const rawChunks = record.chunks;
+  const chunks = Array.isArray(rawChunks)
+    ? rawChunks
+        .map((chunk, i) => normalizeChunk(chunk, `${id}-chunk-${i}`))
+        .filter((chunk): chunk is ChunkResource => chunk !== null)
+    : [];
+  return { id, title: title ?? id, source, url, chunks, score: score(record.score) };
+}
+
+export type DocumentsParseResult =
+  | { ok: true; documents: DocumentResource[] }
+  | { ok: false; documents: DocumentResource[] };
+
+function documentsFromUnknown(value: unknown): DocumentResource[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item, index) => normalizeDocument(item, index))
+    .filter((doc): doc is DocumentResource => doc !== null);
+}
+
+export function parseDocumentsPayload(content: unknown): DocumentsParseResult {
+  let value = content;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return { ok: true, documents: [] };
+    try {
+      value = JSON.parse(trimmed);
+    } catch {
+      return { ok: false, documents: [] };
+    }
+  }
+  if (Array.isArray(value)) return { ok: true, documents: documentsFromUnknown(value) };
+  const record = asRecord(value);
+  if (!record) return { ok: false, documents: [] };
+  if (typeof record.error === "string" && record.documents === undefined) {
+    return { ok: false, documents: [] };
+  }
+  const docs = record.documents;
+  if (docs === undefined) return { ok: true, documents: [] };
+  if (!Array.isArray(docs)) return { ok: false, documents: [] };
+  return { ok: true, documents: documentsFromUnknown(docs) };
+}
+
+const EMPTY_SNAPSHOT: SearchPanelSnapshot = {
+  status: "idle",
+  queries: [],
+  documents: [],
+  candidates: [],
+  calls: [],
+};
+
+export function createSearchLifecycle() {
+  const toolNames = new Map<string, string>();
+  const calls = new Map<string, SearchCallState>();
+  const presentations = new Map<string, SearchCallState>();
+  let documents: DocumentResource[] = [];
+  let candidates: DocumentResource[] = [];
+
+  const ensureCall = (id: string): SearchCallState => {
+    const existing = calls.get(id);
+    if (existing) return existing;
+    const call: SearchCallState = { toolCallId: id, argsBuffer: "", status: "searching", documents: [] };
+    calls.set(id, call);
+    return call;
+  };
+
+  const pairPresentation = (id: string): SearchCallState | undefined => {
+    const existing = presentations.get(id);
+    if (existing) return existing;
+    const call = [...calls.values()].find((item) => !item.presentToolCallId);
+    if (!call) return undefined;
+    call.presentToolCallId = id;
+    presentations.set(id, call);
+    return call;
+  };
+
+  function snapshot(): SearchPanelSnapshot {
+    if (!calls.size && !documents.length && !candidates.length) return EMPTY_SNAPSHOT;
+    const callSnapshots: SearchCallSnapshot[] = [...calls.values()].map((call) => ({
+      toolCallId: call.toolCallId,
+      query: call.query,
+      status: call.status,
+    }));
+    const queries = callSnapshots.map((call) => call.query).filter((query): query is string => Boolean(query));
+    const searchingCall = callSnapshots.find((call) => call.status === "searching");
+    const status: SearchPanelStatus = searchingCall
+      ? "searching"
+      : documents.length
+        ? "results"
+        : callSnapshots.some((call) => call.status === "error")
+          ? "error"
+          : callSnapshots.some((call) => call.status === "empty" || call.status === "results")
+            ? "empty"
+            : "idle";
+    const query =
+      searchingCall?.query ?? [...callSnapshots].reverse().find((call) => call.query)?.query;
+    return { status, query, queries, documents, candidates, calls: callSnapshots };
+  }
+
+  function applyPresentResult(id: string, content: unknown) {
+    const parsed = parseDocumentsPayload(content);
+    let call = pairPresentation(id);
+    if (!call) {
+      call = ensureCall(id);
+      call.presentToolCallId = id;
+      presentations.set(id, call);
+    }
+    if (!parsed.ok) {
+      if (call.status === "searching" && !call.documents.length && !documents.length) {
+        call.status = "error";
+      }
+      return;
+    }
+    call.documents = mergeDocuments(call.documents, parsed.documents);
+    call.status = parsed.documents.length || call.documents.length ? "results" : "empty";
+    documents = mergeDocuments(documents, parsed.documents);
+  }
+
+  function reconcile(value: unknown) {
+    const parsed = parseDocumentsPayload(value);
+    if (!parsed.ok) return;
+    documents = mergeDocuments(documents, parsed.documents);
+    const next = parsed.documents.length || documents.length ? "results" : "empty";
+    calls.forEach((call) => {
+      if (call.status === "searching" || (next === "results" && call.status === "empty")) {
+        call.status = next;
+      }
+    });
+  }
+
+  function apply(event: SearchLifecycleEvent): SearchPanelSnapshot {
+    switch (event.type) {
+      case "TOOL_CALL_START": {
+        toolNames.set(event.toolCallId, event.toolCallName);
+        if (isSearchTool(event.toolCallName)) ensureCall(event.toolCallId);
+        if (event.toolCallName === PRESENT_SEARCH_RESULTS_TOOL) pairPresentation(event.toolCallId);
+        break;
+      }
+      case "TOOL_CALL_ARGS": {
+        const name = toolNames.get(event.toolCallId);
+        if (name && !isSearchTool(name) && !calls.has(event.toolCallId)) break;
+        if (isSearchTool(name) || calls.has(event.toolCallId)) {
+          const call = ensureCall(event.toolCallId);
+          if (event.delta) call.argsBuffer += event.delta;
+          const query = extractSearchQuery(event.partialArgs) ?? extractSearchQuery(call.argsBuffer);
+          if (query) call.query = query;
+        }
+        break;
+      }
+      case "TOOL_CALL_RESULT": {
+        const name = toolNames.get(event.toolCallId);
+        if (isSearchTool(name)) break;
+        if (name === PRESENT_SEARCH_RESULTS_TOOL || presentations.has(event.toolCallId)) {
+          applyPresentResult(event.toolCallId, event.content);
+          break;
+        }
+        if (!name) {
+          const parsed = parseDocumentsPayload(event.content);
+          if (parsed.ok && (parsed.documents.length || calls.size)) {
+            applyPresentResult(event.toolCallId, event.content);
+          }
+        }
+        break;
+      }
+      case "CUSTOM": {
+        if (event.name === RELATED_SEARCH_RESULTS_EVENT) reconcile(event.value);
+        else if (event.name === RELATED_DOCUMENTS_EVENT) {
+          const parsed = parseDocumentsPayload(event.value);
+          if (parsed.ok) candidates = mergeDocuments(candidates, parsed.documents);
+        }
+        break;
+      }
+      case "RUN_ERROR":
+        calls.forEach((call) => {
+          if (call.status === "searching") call.status = "error";
+        });
+        break;
+      case "RUN_FINISHED":
+        calls.forEach((call) => {
+          if (call.status === "searching") call.status = documents.length ? "results" : "empty";
+        });
+        break;
+    }
+    return snapshot();
+  }
+
+  return { apply, snapshot };
+}
