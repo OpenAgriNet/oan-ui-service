@@ -397,7 +397,7 @@ function MobileSearchResults({
     <Drawer open={open} onOpenChange={onOpenChange} shouldScaleBackground={false}>
       <DrawerContent
         hideHandle
-        overlayClassName="z-[60] bg-foreground/25 backdrop-blur-md supports-[backdrop-filter]:bg-foreground/15"
+        overlayClassName="z-[60] bg-foreground/10 backdrop-blur-[1px] supports-[backdrop-filter]:bg-foreground/5"
         className="z-[60] mt-0 h-[min(82dvh,42rem)] rounded-t-[1.5rem] border-border/60 bg-background p-0 shadow-[0_-16px_48px_rgba(0,0,0,0.18)] after:hidden"
       >
         <div className="flex h-full min-h-0 flex-col pb-[env(safe-area-inset-bottom)]">
