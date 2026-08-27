@@ -1,10 +1,12 @@
 /**
  * Panel helpers: cite-filter retrieved documents and dedupe identical chunks.
  *
- * Prefer server `grounded_documents` when present (all languages).
- * English fallback: strict Source-line match against title/source.
- * Other-language fallback (legacy servers): Latin/citation match only — never
- * score-pad unrelated related_documents.
+ * Search hits are shown in the panel as soon as search_documents returns.
+ * Prefer server `grounded_documents` when present. Otherwise every language
+ * is narrowed the same way: keep docs named on a Source/स्रोत line (or
+ * mentioned verbatim), falling back to the full pool when nothing matches —
+ * e.g. because the citation was translated and no longer matches doc
+ * metadata stored in another language/script.
  */
 import type { ChunkResource, DocumentResource } from "./ag-ui";
 
@@ -51,6 +53,7 @@ export function extractCitedSources(text: string): string[] {
 /** Strict normalize — no fuzzy transliteration (keeps English matching tight). */
 function normalize(text: string): string {
   return text
+    .normalize("NFC")
     .toLowerCase()
     .replace(/[^\p{L}\p{M}\p{N}\s]/gu, "")
     .replace(/\s+/g, " ")
@@ -84,32 +87,6 @@ export function filterDocumentsByCitedSources(
   });
 }
 
-/** Latin-only needles from a स्रोत line (e.g. "**स्रोत: Maharashtra SOP**"). */
-function latinCitationNeedles(responseText: string): string[] {
-  const needles = new Set<string>();
-  for (const name of extractCitedSources(responseText)) {
-    for (const phrase of name.match(/[A-Za-z][A-Za-z0-9&.'\-\s]{2,}/g) ?? []) {
-      const n = normalize(phrase.trim());
-      if (n.length >= 4) needles.add(n);
-    }
-  }
-  return [...needles];
-}
-
-function filterByLatinCitations(
-  documents: DocumentResource[],
-  responseText: string
-): DocumentResource[] {
-  const needles = latinCitationNeedles(responseText);
-  if (!needles.length) return [];
-  return documents.filter((doc) => {
-    const fields = [normalize(doc.title), doc.source ? normalize(doc.source) : ""];
-    return needles.some((needle) =>
-      fields.some((field) => field && (field.includes(needle) || needle.includes(field)))
-    );
-  });
-}
-
 export interface GroundedDocument {
   doc: DocumentResource;
   chunks: ChunkResource[];
@@ -120,16 +97,8 @@ export interface GroundedDocumentsOptions {
   responseText?: string;
   /** `related_documents` — used only when no curated documents arrived. */
   candidates?: DocumentResource[];
-  /** UI / answer language (`en`, `hi`, `mr`, `bhb`). */
-  language?: string;
   /** Server already filtered via CUSTOM grounded_documents — show as-is. */
   serverGrounded?: boolean;
-}
-
-function isTranslatedAnswer(responseText: string, language?: string): boolean {
-  const lang = (language || "").toLowerCase();
-  if (lang && lang !== "en") return true;
-  return /\p{Script=Devanagari}/u.test(responseText);
 }
 
 function dedupeExactChunks(chunks: ChunkResource[]): ChunkResource[] {
@@ -152,32 +121,18 @@ export function getGroundedDocuments(
   documents: DocumentResource[],
   options: GroundedDocumentsOptions = {}
 ): GroundedDocument[] {
-  const { responseText = "", candidates = [], language, serverGrounded = false } = options;
-  const curated = documents;
+  const { responseText = "", candidates = [], serverGrounded = false } = options;
+  const pool = documents.length > 0 ? documents : candidates;
 
-  // Server already chose the supporting docs — do not re-filter by स्रोत text.
-  if (serverGrounded) return toGrounded(curated);
+  if (serverGrounded) return toGrounded(documents.length ? documents : pool);
 
-  // Still streaming: show curated present_search_results as they arrive.
-  if (!responseText.trim()) return toGrounded(curated);
+  // Search hits should stay visible in the panel as soon as they arrive.
+  if (!responseText.trim()) return toGrounded(pool);
 
-  const translated = isTranslatedAnswer(responseText, language);
-  const pool = curated.length > 0 ? curated : candidates;
-
-  // English — strict Source matching only.
-  if (!translated) {
-    return toGrounded(filterDocumentsByCitedSources(pool, responseText));
-  }
-
-  // Legacy other-language path (no server grounded_documents yet):
-  // match Latin/English names or exact title/source; never score-pad.
-  const latinHit = filterByLatinCitations(pool, responseText);
-  if (latinHit.length) return toGrounded(latinHit);
-
-  const strict = filterDocumentsByCitedSources(pool, responseText);
-  if (strict.length) return toGrounded(strict);
-
-  return [];
+  // Same narrowing for every language — falls back to the full pool when the
+  // citation doesn't match doc metadata (e.g. a translated Source name).
+  const cited = filterDocumentsByCitedSources(pool, responseText);
+  return toGrounded(cited.length ? cited : pool);
 }
 
 /** Filter panel cards by title, source, or chunk text. */
@@ -185,13 +140,13 @@ export function filterGroundedDocuments(
   documents: GroundedDocument[],
   query: string
 ): GroundedDocument[] {
-  const q = query.trim().toLowerCase();
+  const q = query.trim().normalize("NFC").toLowerCase();
   if (!q) return documents;
+  const fold = (value: string) => value.normalize("NFC").toLowerCase();
   return documents
     .map(({ doc, chunks }) => {
-      const hit =
-        doc.title.toLowerCase().includes(q) || (doc.source ?? "").toLowerCase().includes(q);
-      const matching = chunks.filter((chunk) => chunk.text.toLowerCase().includes(q));
+      const hit = fold(doc.title).includes(q) || fold(doc.source ?? "").includes(q);
+      const matching = chunks.filter((chunk) => fold(chunk.text).includes(q));
       return { doc, chunks: matching.length ? matching : hit ? chunks : [] };
     })
     .filter(({ chunks }) => chunks.length > 0);

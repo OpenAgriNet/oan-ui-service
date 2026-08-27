@@ -182,20 +182,18 @@ export function ChatInterface() {
     () =>
       activeDocsMessage
         ? getGroundedDocuments(
-            // Prefer curated present_search_results / server grounded_documents.
+            // Prefer search_documents hits / present_search_results / grounded_documents.
             activeDocsMessage.search?.documents?.length
               ? activeDocsMessage.search.documents
               : (activeDocsMessage.documents ?? []),
             {
               responseText: activeDocsMessage.isStreaming ? "" : activeDocsMessage.text,
               candidates: activeDocsMessage.search?.candidates,
-              // Fall back to UI language so hi/mr/bhb never take the English filter by mistake.
-              language: activeDocsMessage.responseLanguage || language,
               serverGrounded: Boolean(activeDocsMessage.search?.serverGrounded),
             }
           )
         : [],
-    [activeDocsMessage, language]
+    [activeDocsMessage]
   );
 
   const searchStatus = activeDocsMessage?.search?.status;
@@ -541,7 +539,7 @@ export function ChatInterface() {
             streamingSearch = search;
             streamingDocuments = mergeDocuments(
               streamingDocuments,
-              search.documents
+              mergeDocuments(search.documents, search.candidates)
             );
             updateMessage(loadingMessageId, {
               text: streamingText,

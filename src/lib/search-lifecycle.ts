@@ -1,7 +1,8 @@
 /**
  * Progressive search-panel state from AG-UI tool/custom events.
- * Display: present_search_results / related_search_results / grounded_documents.
- * related_documents is stored as candidates (unfiltered retrieval).
+ * Display search_documents hits as soon as they return, then merge
+ * present_search_results / related_search_results. grounded_documents replaces
+ * the list when the server sends it. related_documents stays as candidates.
  */
 
 import { mergeDocuments, type DocumentResource, type ChunkResource } from "@/lib/ag-ui";
@@ -117,26 +118,76 @@ export function extractSearchQuery(args: unknown): string | undefined {
 function normalizeChunk(raw: unknown, fallbackId: string): ChunkResource | null {
   if (typeof raw === "string") return raw.trim() ? { id: fallbackId, text: raw.trim() } : null;
   const record = asRecord(raw);
-  const chunkText = record && text(record.text);
+  const chunkText =
+    record &&
+    text(record.text, record.content, record.page_content, record.snippet, record.highlight);
   return record && chunkText
-    ? { id: text(record.id) ?? fallbackId, text: chunkText, score: score(record.score) }
+    ? {
+        id: text(record.id, record._id) ?? fallbackId,
+        text: chunkText,
+        score: score(record.score, record._score),
+      }
     : null;
 }
 
 export function normalizeDocument(raw: unknown, index = 0): DocumentResource | null {
   const record = asRecord(raw);
   if (!record) return null;
-  const title = text(record.title, record.name);
-  const id = text(record.id, record.document_id) ?? title ?? `doc-${index}`;
-  const source = text(record.source) ?? null;
-  const url = [record.url, record.source_url].find(isUsableHttpUrl)?.trim() ?? null;
-  const rawChunks = record.chunks;
-  const chunks = Array.isArray(rawChunks)
+  const inner = asRecord(record.document) ?? asRecord(record.doc) ?? record;
+  const meta = asRecord(inner.metadata);
+  const title = text(
+    inner.title,
+    inner.name,
+    inner.file_name,
+    inner.filename,
+    meta?.title,
+    meta?.name,
+    record.title,
+    record.name
+  );
+  const id =
+    text(inner.id, inner._id, inner.document_id, record.id, record._id, record.document_id) ??
+    title ??
+    `doc-${index}`;
+  const source = text(inner.source, inner.source_name, meta?.source, record.source) ?? null;
+  const url =
+    [inner.url, inner.source_url, record.url, record.source_url, meta?.url].find(isUsableHttpUrl)?.trim() ??
+    null;
+  const rawChunks =
+    inner.chunks ?? record.chunks ?? (inner.chunk ? [inner.chunk] : record.chunk ? [record.chunk] : undefined);
+  let chunks = Array.isArray(rawChunks)
     ? rawChunks
         .map((chunk, i) => normalizeChunk(chunk, `${id}-chunk-${i}`))
         .filter((chunk): chunk is ChunkResource => chunk !== null)
     : [];
-  return { id, title: title ?? id, source, url, chunks, score: score(record.score) };
+  const inlineText = text(
+    inner.text,
+    inner.content,
+    inner.page_content,
+    inner.snippet,
+    inner.highlight,
+    record.text,
+    record.snippet,
+    record.content,
+    record.highlight
+  );
+  if (!chunks.length && inlineText) {
+    chunks = [
+      {
+        id: `${id}-chunk-0`,
+        text: inlineText,
+        score: score(inner.score, inner._score, record.score, record._score),
+      },
+    ];
+  }
+  return {
+    id,
+    title: title ?? id,
+    source,
+    url,
+    chunks,
+    score: score(inner.score, inner._score, record.score, record._score),
+  };
 }
 
 export type DocumentsParseResult =
@@ -164,10 +215,29 @@ export function parseDocumentsPayload(content: unknown): DocumentsParseResult {
   if (Array.isArray(value)) return { ok: true, documents: documentsFromUnknown(value) };
   const record = asRecord(value);
   if (!record) return { ok: false, documents: [] };
-  if (typeof record.error === "string" && record.documents === undefined) {
+  const nested =
+    record.data ??
+    record.payload ??
+    record.result ??
+    record.return_value ??
+    record.output ??
+    record.content;
+  if (nested !== undefined && nested !== record && !Array.isArray(record.documents) && !Array.isArray(record.hits)) {
+    const fromNested = parseDocumentsPayload(nested);
+    if (fromNested.ok && fromNested.documents.length) return fromNested;
+  }
+  const docs =
+    record.documents ??
+    record.related_documents ??
+    record.grounded_documents ??
+    record.search_results ??
+    record.retrieved_documents ??
+    record.sources ??
+    record.results ??
+    record.hits;
+  if (typeof record.error === "string" && docs === undefined) {
     return { ok: false, documents: [] };
   }
-  const docs = record.documents;
   if (docs === undefined) return { ok: true, documents: [] };
   if (!Array.isArray(docs)) return { ok: false, documents: [] };
   return { ok: true, documents: documentsFromUnknown(docs) };
@@ -216,15 +286,16 @@ export function createSearchLifecycle() {
     }));
     const queries = callSnapshots.map((call) => call.query).filter((query): query is string => Boolean(query));
     const searchingCall = callSnapshots.find((call) => call.status === "searching");
-    const status: SearchPanelStatus = searchingCall
-      ? "searching"
-      : documents.length
-        ? "results"
-        : callSnapshots.some((call) => call.status === "error")
-          ? "error"
-          : callSnapshots.some((call) => call.status === "empty" || call.status === "results")
-            ? "empty"
-            : "idle";
+    const status: SearchPanelStatus =
+      searchingCall && !documents.length
+        ? "searching"
+        : documents.length || candidates.length
+          ? "results"
+          : callSnapshots.some((call) => call.status === "error")
+            ? "error"
+            : callSnapshots.some((call) => call.status === "empty" || call.status === "results")
+              ? "empty"
+              : "idle";
     const query =
       searchingCall?.query ?? [...callSnapshots].reverse().find((call) => call.query)?.query;
     return {
@@ -236,6 +307,20 @@ export function createSearchLifecycle() {
       serverGrounded: serverGrounded || undefined,
       calls: callSnapshots,
     };
+  }
+
+  function applySearchHits(id: string, content: unknown) {
+    const call = ensureCall(id);
+    const parsed = parseDocumentsPayload(content);
+    if (!parsed.ok) return;
+    candidates = mergeDocuments(candidates, parsed.documents);
+    if (serverGrounded) {
+      call.status = documents.length ? "results" : parsed.documents.length ? "results" : "empty";
+      return;
+    }
+    call.documents = mergeDocuments(call.documents, parsed.documents);
+    documents = mergeDocuments(documents, parsed.documents);
+    call.status = documents.length ? "results" : "empty";
   }
 
   function applyPresentResult(id: string, content: unknown) {
@@ -307,7 +392,10 @@ export function createSearchLifecycle() {
       }
       case "TOOL_CALL_RESULT": {
         const name = toolNames.get(event.toolCallId);
-        if (isSearchTool(name)) break;
+        if (isSearchTool(name)) {
+          applySearchHits(event.toolCallId, event.content);
+          break;
+        }
         if (name === PRESENT_SEARCH_RESULTS_TOOL || presentations.has(event.toolCallId)) {
           applyPresentResult(event.toolCallId, event.content);
           break;
@@ -325,7 +413,10 @@ export function createSearchLifecycle() {
         else if (event.name === RELATED_SEARCH_RESULTS_EVENT) reconcile(event.value);
         else if (event.name === RELATED_DOCUMENTS_EVENT) {
           const parsed = parseDocumentsPayload(event.value);
-          if (parsed.ok) candidates = mergeDocuments(candidates, parsed.documents);
+          if (parsed.ok) {
+            candidates = mergeDocuments(candidates, parsed.documents);
+            if (!serverGrounded) documents = mergeDocuments(documents, parsed.documents);
+          }
         }
         break;
       }

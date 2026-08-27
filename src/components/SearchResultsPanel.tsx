@@ -63,7 +63,9 @@ function useSearchResultsModel(
 ) {
   const { t } = useLanguage();
   const sourceSearch = useSourceSearch(filterActive);
-  const status: SearchPanelStatus = search?.status ?? (groundedDocuments.length ? "results" : "idle");
+  const rawStatus: SearchPanelStatus = search?.status ?? (groundedDocuments.length ? "results" : "idle");
+  const status: SearchPanelStatus =
+    groundedDocuments.length > 0 && rawStatus !== "error" ? "results" : rawStatus;
   const statusText = getSearchStatusText(t, status, groundedDocuments.length);
   const title = (t("searchResults") as string) || "Search Results";
   const filtered = useMemo(

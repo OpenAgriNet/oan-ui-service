@@ -10,7 +10,7 @@
  * Payloads we care about ride on ordinary protocol events — no custom transport:
  *   - `present_video`          → TOOL_CALL_RESULT content `{"videos":[…]}`
  *   - `present_suggestions`    → TOOL_CALL_RESULT content `{"questions":[…]}`
- *   - `search_documents`       → TOOL_CALL_START / ARGS (query) for the loading panel
+ *   - `search_documents`       → TOOL_CALL_START / ARGS (query) + RESULT hits shown in the panel
  *   - `present_search_results` → TOOL_CALL_RESULT content `{"documents":[…]}`
  *   - `related_search_results` → CUSTOM event, reconciliation / fallback
  *   - `related_documents`      → CUSTOM event, unfiltered retrieval candidates
@@ -127,8 +127,8 @@ export async function runAgUiChat(options: RunAgUiChatOptions): Promise<AgUiChat
   const emitSearch = (snapshot: SearchPanelSnapshot) => {
     if (snapshot.status === "idle") return;
     onSearchUpdate?.(snapshot);
-    if (snapshot.documents.length) {
-      documents = snapshot.documents;
+    if (snapshot.documents.length || snapshot.candidates.length) {
+      documents = snapshot.documents.length ? snapshot.documents : snapshot.candidates;
       onDocuments?.(documents);
     }
   };
