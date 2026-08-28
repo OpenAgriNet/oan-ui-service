@@ -415,7 +415,6 @@ export function createSearchLifecycle() {
           const parsed = parseDocumentsPayload(event.value);
           if (parsed.ok) {
             candidates = mergeDocuments(candidates, parsed.documents);
-            if (!serverGrounded) documents = mergeDocuments(documents, parsed.documents);
           }
         }
         break;
