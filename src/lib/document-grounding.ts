@@ -1,84 +1,23 @@
 /**
- * Frontend-only helpers for the Search Results (grounding) panel.
+ * Panel helpers: render the sources the server says back the answer.
  *
- * The backend hands over every document `search_documents` retrieved, not just
- * the ones the model actually used. These helpers narrow that down to the
- * documents actually referenced in the response text — either via a
- * "**Source: X**" line or just named in prose — so the panel only ever shows
- * the sources the answer actually points to.
+ * The server is authoritative. The Search Results Panel is driven by the
+ * document ids the model reported via `present_search_results`, resolved and
+ * chunk-pruned server-side and delivered as the `grounded_documents` CUSTOM
+ * event. The client no longer parses `Source/स्रोत` lines or transliterates
+ * names — that heuristic produced wrong/irrelevant sources. Here we only:
+ *   - while streaming, show the retrieved hits so the panel isn't empty, and
+ *   - once the server has grounded, render exactly what it sent.
  */
 import type { ChunkResource, DocumentResource } from "./ag-ui";
 
-// "s?" after Source: the model writes "**Sources: A, B**" (plural) when
-// citing more than one document together in a single line — without it,
-// that whole line fails to match and both names are lost from `cited`.
-const SOURCE_LINE_RE = /\*\*(?:Sources?|स्रोत):\s*([^*\n]+)\*\*/gi;
-
-/** Extract cited source names from a "**Source: A / B**" style line, split on separators. */
-export function extractCitedSources(text: string): string[] {
-  if (!text) return [];
-  const names: string[] = [];
-  for (const match of text.matchAll(SOURCE_LINE_RE)) {
-    const raw = match[1] ?? "";
-    for (const part of raw.split(/\s*[/,]\s*| and /i)) {
-      const trimmed = part.trim();
-      if (trimmed) names.push(trimmed);
-    }
-  }
-  return names;
-}
-
-// \p{M} (Mark) must be kept alongside \p{L} (Letter) — Devanagari (and other
-// Indic script) vowel signs/virama/anusvara are combining marks, a separate
-// Unicode category from letters. Stripping them corrupts the text instead of
-// just removing punctuation, e.g. "कृषि" -> "कष" (vowel signs silently gone).
 function normalize(text: string): string {
   return text
+    .normalize("NFC")
     .toLowerCase()
-    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, "")
+    .replace(/[‘’“”]/g, "'")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-/**
- * A name shorter than this is too generic to safely substring-match against
- * the whole response body (would false-positive on common short titles).
- */
-const MIN_PLAIN_MENTION_LENGTH = 4;
-
-/**
- * Keep only documents actually referenced in the response text. `source` and
- * `title` are checked independently — one can be empty/missing while the
- * other still carries the match (e.g. a backend gap leaves `source` blank,
- * but the full descriptive `title` still contains the cited name) — so a
- * document counts as referenced if *either* field matches in *either* of two
- * ways:
- *  1. Overlaps a name pulled from an explicit "**Source: X**" citation line
- *     (e.g. cited name "ICAR" is a substring of a longer title like
- *     "Biofertilizers for Sustainable Crop Production by ICAR").
- *  2. Otherwise appears verbatim in the plain response text — the model
- *     doesn't always use the formal citation tag even when it did use a
- *     document, so relying on (1) alone silently excludes genuinely-used
- *     sources whenever the model phrases the reference differently.
- */
-export function filterDocumentsByCitedSources(
-  documents: DocumentResource[],
-  responseText: string
-): DocumentResource[] {
-  const cited = extractCitedSources(responseText).map(normalize).filter(Boolean);
-  const normalizedResponse = normalize(responseText);
-
-  const matches = (value: string): boolean => {
-    if (!value) return false;
-    if (cited.some((name) => value.includes(name) || name.includes(value))) return true;
-    return value.length >= MIN_PLAIN_MENTION_LENGTH && normalizedResponse.includes(value);
-  };
-
-  return documents.filter((doc) => {
-    const docSource = doc.source ? normalize(doc.source) : "";
-    const docTitle = normalize(doc.title);
-    return matches(docSource) || matches(docTitle);
-  });
 }
 
 export interface GroundedDocument {
@@ -86,43 +25,67 @@ export interface GroundedDocument {
   chunks: ChunkResource[];
 }
 
-/**
- * Collapse chunks that are word-for-word the same passage (after
- * normalizing case/punctuation/whitespace) — e.g. the same physical chunk
- * coming back from two separate search_documents calls with different ids.
- * Deliberately an exact-match bar, not a fuzzy/word-overlap one: two chunks
- * that merely discuss similar things, or partially overlap, are kept as
- * distinct — only a literal repeat of the same text is removed.
- */
+export interface GroundedDocumentsOptions {
+  /** Full assistant text. Only used to tell "still streaming" from "finished". */
+  responseText?: string;
+  /** `related_documents` — the retrieval pool, shown while the server has not grounded yet. */
+  candidates?: DocumentResource[];
+  /** Server sent the `grounded_documents` CUSTOM event — render `documents` as-is. */
+  serverGrounded?: boolean;
+}
+
 function dedupeExactChunks(chunks: ChunkResource[]): ChunkResource[] {
   const seen = new Set<string>();
-  const result: ChunkResource[] = [];
-  for (const chunk of chunks) {
+  return chunks.filter((chunk) => {
     const key = normalize(chunk.text);
-    if (key && seen.has(key)) continue;
+    if (key && seen.has(key)) return false;
     if (key) seen.add(key);
-    result.push(chunk);
-  }
-  return result;
+    return true;
+  });
+}
+
+function toGrounded(documents: DocumentResource[]): GroundedDocument[] {
+  return documents
+    .map((doc) => ({ doc, chunks: dedupeExactChunks(doc.chunks ?? []) }))
+    .filter(({ doc, chunks }) => chunks.length > 0 || Boolean(doc.title || doc.source));
 }
 
 /**
- * Full pipeline for the panel: keep only documents actually referenced in
- * the response text (see `filterDocumentsByCitedSources`), and for each of
- * those documents, every retrieved chunk exactly as retrieved, minus literal
- * repeats of the same passage (see `dedupeExactChunks`). Nothing is dropped
- * based on word-overlap with the response or on fuzzy similarity between
- * chunks: once a document is referenced, every distinct chunk from it stays
- * visible, matching what shows up in Langfuse.
+ * Documents to render in the panel.
+ *
+ * - `serverGrounded`: the server already chose the exact sources (by document
+ *   id) that back the answer — render them verbatim, no client filtering.
+ * - otherwise (streaming, or the server sent nothing yet): show the retrieval
+ *   pool so the panel shows progress. We never drop sources by matching the
+ *   answer text — that is the server's job and its result arrives as
+ *   `grounded_documents`.
  */
 export function getGroundedDocuments(
   documents: DocumentResource[],
-  responseText: string
+  options: GroundedDocumentsOptions = {}
 ): GroundedDocument[] {
-  const candidates = filterDocumentsByCitedSources(documents, responseText);
-  if (!candidates.length) return [];
+  const { candidates = [], serverGrounded = false } = options;
+  // Server chose the exact sources by id — render them verbatim, even when the
+  // list is empty (e.g. a weather-only answer grounds to no document).
+  if (serverGrounded) return toGrounded(documents);
+  // Not grounded yet (streaming, or no server event): show the retrieval pool.
+  const pool = documents.length > 0 ? documents : candidates;
+  return toGrounded(pool);
+}
 
-  return candidates
-    .map((doc) => ({ doc, chunks: dedupeExactChunks(doc.chunks) }))
+/** Filter panel cards by title, source, or chunk text. */
+export function filterGroundedDocuments(
+  documents: GroundedDocument[],
+  query: string
+): GroundedDocument[] {
+  const q = query.trim().normalize("NFC").toLowerCase();
+  if (!q) return documents;
+  const fold = (value: string) => value.normalize("NFC").toLowerCase();
+  return documents
+    .map(({ doc, chunks }) => {
+      const hit = fold(doc.title).includes(q) || fold(doc.source ?? "").includes(q);
+      const matching = chunks.filter((chunk) => fold(chunk.text).includes(q));
+      return { doc, chunks: matching.length ? matching : hit ? chunks : [] };
+    })
     .filter(({ chunks }) => chunks.length > 0);
 }

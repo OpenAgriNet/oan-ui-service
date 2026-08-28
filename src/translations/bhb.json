@@ -11,6 +11,12 @@
   "video": "व्हिडिओ",
   "videoNotSupported": "तुमारो ब्राउझर व्हिडिओ प्लेबॅक समर्थन करत नाय.",
   "searchResults": "खोज परिणाम",
+  "searchSearching": "खोज चालू हाय",
+  "searchNoResults": "कोई परिणाम नाय",
+  "searchFailed": "खोज विफल थई",
+  "searchSource": "स्रोत",
+  "searchSources": "स्रोत",
+  "viewSources": "स्रोत जोओ",
   "relevanceScore": "स्कोर",
   "selectLanguage": "भाखा चूनो",
   "disclaimerText": "Al य तियार केली माहिती. मेहरबानी कीने स्वतंत्र रूपांम खोरी हाय का ती तपासा",
@@ -215,7 +221,6 @@
     "crop.water.management_practices": "पिकाहां केंतां पांयां व्यवस्थापन केंरूंला पद्धती केल्ल्या (पिक) ?",
     "crop.storage.pests_and_control": "बोदडी/ कोणगी/ कोठीमं/ खोतलांम थोवल्या धान्यांम केल्ल्या किड्या पोडत्याह्या आन तिया नियंत्रण?",
     "fruit.schemes.available_for_plantations": "फळबाग लागवड करवा वास्ते कसी योजना छे?",
-    "fruit.fruit_load.per_tree_how_many": "[fruit crop] म एका झाड पर कतला फळ लेवा पाहीजे?",
     "flowers.greenhouse.benefits": "पोलीहाउस आन् ग्रीन हाउस फुलशेती केरां केंतां केहंकी फायदेशीर हाय?"
   },
   "pestDetection": {

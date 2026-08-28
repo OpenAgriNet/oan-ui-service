@@ -29,6 +29,8 @@ export interface DocumentResource {
   id: string;
   title: string;
   source?: string | null;
+  /** Source link when the payload includes a usable URL. */
+  url?: string | null;
   chunks: ChunkResource[];
   score?: number;
 }
@@ -59,6 +61,10 @@ export function mergeDocuments(
     const chunkIds = new Set(prior.chunks.map((c) => c.id));
     byId.set(doc.id, {
       ...prior,
+      title: doc.title || prior.title,
+      source: doc.source ?? prior.source,
+      url: doc.url ?? prior.url,
+      score: doc.score ?? prior.score,
       chunks: [...prior.chunks, ...doc.chunks.filter((c) => !chunkIds.has(c.id))],
     });
   }
