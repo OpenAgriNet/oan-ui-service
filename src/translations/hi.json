@@ -45,6 +45,8 @@
   "feedbackPlaceholder": "या हमें इस मुद्दे के बारे में और अधिक बताएं...",
   "appTitle": "महाविस्तार - AI",
   "askYourQuestion": "आपका कृषि सहायक से पूछें",
+  "video": "वीडियो",
+  "videoNotSupported": "आपका ब्राउज़र वीडियो प्लेबैक का समर्थन नहीं करता।",
   "copyMessage": "संदेश कॉपी करें",
   "likeMessage": "संदेश पसंद करें",
   "dislikeMessage": "संदेश नहीं पसंद करें",

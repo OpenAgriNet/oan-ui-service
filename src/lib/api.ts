@@ -1,6 +1,10 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { environment } from '@/config/environment';
+import { type VideoResource } from '@/lib/ag-ui';
+import { runAgUiChat } from '@/lib/agui-agent';
+
+export type { VideoResource };
 
 export interface LocationData {
   latitude: number;
@@ -10,6 +14,15 @@ export interface LocationData {
 export interface ChatResponse {
   response: string;
   status: string;
+  /** Structured videos the agent attached via `present_video`, if any. */
+  videos?: VideoResource[];
+}
+
+export interface SendUserQueryOptions {
+  userId?: string;
+  onVideos?: (videos: VideoResource[]) => void;
+  /** When true (default), stream via AG-UI for inline video support. */
+  useAgUi?: boolean;
 }
 
 export interface TranscriptionResponse {
@@ -126,14 +139,21 @@ class ApiService {
     session: string,
     sourceLang: string,
     targetLang: string,
-    onStreamData?: (data: string) => void
+    onStreamData?: (data: string) => void,
+    options?: SendUserQueryOptions
   ): Promise<ChatResponse> {
     try {
       this.refreshAuthToken();
       if (!this.validateAuth()) {
         return { response: "Authentication error", status: "error" };
       }
-      
+
+      const useAgUi = options?.useAgUi !== false;
+
+      if (onStreamData && useAgUi) {
+        return this.sendUserQueryAgUi(msg, session, sourceLang, targetLang, onStreamData, options);
+      }
+
       const params = {
         session_id: session,
         query: msg,
@@ -145,7 +165,8 @@ class ApiService {
       const headers = this.getAuthHeaders();
 
       if (onStreamData) {
-        // Handle streaming response
+        // Legacy plain-text stream (GET /api/chat/) — used directly when
+        // useAgUi is false, or as the fallback from sendUserQueryAgUi below.
         const endpointPath = '/api/chat/';
         const apiParams: Record<string, string> = { ...params } as Record<string, string>;
 
@@ -208,6 +229,68 @@ class ApiService {
     } catch (error) {
       console.error('Error sending user query:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Stream chat over the AG-UI protocol (POST /api/streaming) via `@ag-ui/client`.
+   *
+   * `HttpAgent` owns SSE parsing and event typing; `runAgUiChat` maps the
+   * protocol events onto the callbacks this service already exposes. On any
+   * transport failure we degrade to the plain-text `/api/chat/` stream so a
+   * backend that has not shipped the protocol endpoint still works.
+   */
+  private async sendUserQueryAgUi(
+    msg: string,
+    session: string,
+    sourceLang: string,
+    targetLang: string,
+    onStreamData: (data: string) => void,
+    options?: SendUserQueryOptions
+  ): Promise<ChatResponse> {
+    // Falling back after text has already rendered would replay the whole
+    // answer and duplicate it on screen, so only retry a stream that produced
+    // nothing.
+    let streamedAnything = false;
+
+    try {
+      const result = await runAgUiChat({
+        url: `${this.apiUrl}/api/streaming`,
+        headers: this.getAuthHeaders(),
+        query: msg,
+        sessionId: session,
+        sourceLang,
+        targetLang,
+        userId: options?.userId || 'anonymous',
+        onText: (delta) => {
+          streamedAnything = true;
+          onStreamData(delta);
+        },
+        onVideos: options?.onVideos,
+      });
+
+      return {
+        response: result.text,
+        status: 'success',
+        videos: result.videos,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const status = (error as { status?: number })?.status;
+      if (status === 429 || /\b429\b|rate limit/i.test(message)) {
+        const rateLimited = new Error('Rate limit exceeded');
+        (rateLimited as any).status = 429;
+        throw rateLimited;
+      }
+
+      if (streamedAnything) throw error;
+
+      // Older backends have no /api/streaming — keep the app usable on plain text.
+      console.warn('AG-UI chat unavailable; falling back to /api/chat/', error);
+      return this.sendUserQuery(msg, session, sourceLang, targetLang, onStreamData, {
+        ...options,
+        useAgUi: false,
+      });
     }
   }
 

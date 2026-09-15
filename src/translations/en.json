@@ -45,6 +45,8 @@
   "feedbackPlaceholder": "Or tell us more about the issue...",
   "appTitle": "MahaVISTAAR - AI",
   "settings": "Settings",
+  "video": "Video",
+  "videoNotSupported": "Your browser does not support video playback.",
   "copyMessage": "Copy message",
   "likeMessage": "Like message",
   "dislikeMessage": "Dislike message",
