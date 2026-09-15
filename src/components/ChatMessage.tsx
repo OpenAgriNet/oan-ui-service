@@ -22,6 +22,8 @@ import { useTts } from "@/hooks/use-tts";
 import { useLanguage } from "@/components/LanguageProvider";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUserInitials } from "@/lib/user";
+import { RelatedVideos } from "@/components/RelatedVideos";
+import { normalizeVideoMentionText, type VideoResource } from "@/lib/ag-ui";
 
 interface ChatMessageProps {
   message: string;
@@ -40,6 +42,7 @@ interface ChatMessageProps {
   errorTranslationKey?: string;
   responseLanguage?: string;
   imageUrl?: string;
+  videos?: VideoResource[];
 }
 
 export function ChatMessage({
@@ -59,6 +62,7 @@ export function ChatMessage({
   errorTranslationKey,
   responseLanguage,
   imageUrl,
+  videos,
 }: ChatMessageProps) {
   const [isLiked, setIsLiked] = useState(false);
   const [isDisliked, setIsDisliked] = useState(false);
@@ -168,7 +172,18 @@ export function ChatMessage({
   };
 
   // Use translation key for error messages if present
-  const displayMessage = isErrorMessage && errorTranslationKey ? (t(errorTranslationKey) as string) : message;
+  const rawDisplayMessage = isErrorMessage && errorTranslationKey ? (t(errorTranslationKey) as string) : message;
+  // Always normalize assistant text: strip hallucinated video cues/markdown
+  // links when no video attached; place the cue correctly when one is.
+  const displayMessage =
+    !isUser && !isErrorMessage
+      ? normalizeVideoMentionText(
+          rawDisplayMessage,
+          !!(videos && videos.length > 0),
+          responseLanguage,
+          questionText
+        )
+      : rawDisplayMessage;
 
   // If it's an AI response on mobile (not a user message), use a simplified layout
   if (!isUser && isMobile && (!isLoading || isErrorMessage)) {
@@ -193,8 +208,11 @@ export function ChatMessage({
               >
                 {displayMessage}
               </ReactMarkdown>
+              {!isUser && !isErrorMessage && videos && videos.length > 0 && (
+                <RelatedVideos videos={videos} />
+              )}
             </div>
-            
+
             <div className="flex items-center justify-start gap-3 mt-4">
               {isStreaming && !isErrorMessage ? (
                 renderStreamingIndicator()
@@ -318,14 +336,16 @@ export function ChatMessage({
         </Avatar>
 
         <div className={cn(
-          "flex flex-col max-w-[80%] min-w-[80px]",
-          isUser ? "items-end" : "items-start"
+          "flex flex-col min-w-[80px]",
+          isUser ? "items-end max-w-[80%]" : "items-start",
+          !isUser && videos && videos.length > 0 ? "w-full max-w-[80%]" : "max-w-[80%]"
         )}>
           <div className={cn(
             "rounded-2xl px-4 py-2.5 mb-1 w-fit",
             isUser
               ? "bg-primary text-primary-foreground rounded-tr-none word-break-break-word"
-              : `${displayMessage.length > 0 ? "bg-muted" : "hidden"} rounded-tl-none`
+              : `${displayMessage.length > 0 || (videos && videos.length > 0) ? "bg-muted" : "hidden"} rounded-tl-none`,
+            !isUser && videos && videos.length > 0 ? "w-full max-w-full" : ""
           )}>
             {/* Render attached image in user messages */}
             {isUser && imageUrl && (
@@ -352,6 +372,9 @@ export function ChatMessage({
                 >
                   {displayMessage}
                 </ReactMarkdown>
+                {!isUser && !isErrorMessage && videos && videos.length > 0 && (
+                  <RelatedVideos videos={videos} />
+                )}
               </div>
             )}
           </div>

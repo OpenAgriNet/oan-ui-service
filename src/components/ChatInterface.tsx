@@ -8,7 +8,7 @@ import { ChatMessage } from "@/components/ChatMessage";
 import { useLanguage } from "@/components/LanguageProvider";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { AudioWaveform } from "@/components/AudioWaveform";
-import apiService from "@/lib/api";
+import apiService, { type VideoResource } from "@/lib/api";
 import { EmptyStateScreen } from "@/components/EmptyStateScreen";
 import { detectIndianLanguage, getCookie, setCookie } from "@/lib/utils";
 import AutoResizeTextarea from "@/components/AutoResizeTextarea";
@@ -43,6 +43,7 @@ interface Message {
   imageUrl?: string;
   isPestDetectionResponse?: boolean;
   pestUploadId?: string;
+  videos?: VideoResource[];
 }
 
 interface ChatResponse {
@@ -428,9 +429,10 @@ export function ChatInterface() {
     // Use the current sessionId or create a new UUID if needed
     const currentSession = sessionId || createSession();
     
-    // Handle streaming response
+    // Handle streaming response (AG-UI: text deltas + optional related videos)
     let streamingText = "";
-    
+    let streamingVideos: VideoResource[] | undefined;
+
     try {
       // Set streaming state to true when we begin receiving message chunks
       updateMessage(loadingMessageId, {
@@ -457,6 +459,17 @@ export function ChatInterface() {
             questionText: text,
             responseLanguage: targetLang
           });
+        },
+        {
+          userId: user?.username || user?.mobile || "anonymous",
+          onVideos: (videos) => {
+            // Buffer only — the `present_video` tool result can arrive at any
+            // point while text is still streaming (timing varies run to run),
+            // so attaching it to the message immediately made the video
+            // render before the text was fully in, inconsistently. Videos
+            // are committed to message state once, in the final update below.
+            streamingVideos = videos;
+          },
         }
       ) as ChatResponse;
 
@@ -467,7 +480,8 @@ export function ChatInterface() {
           isStreaming: false,
           questionId,
           questionText: text,
-          responseLanguage: targetLang
+          responseLanguage: targetLang,
+          videos: response.videos?.length ? response.videos : streamingVideos,
         });
         
         if (user?.is_guest_user) {
@@ -1192,6 +1206,7 @@ export function ChatInterface() {
                   errorTranslationKey={message.errorTranslationKey}
                   responseLanguage={message.responseLanguage}
                   imageUrl={message.imageUrl}
+                  videos={message.videos}
                 />
               ))}
               <div ref={messagesEndRef} className="h-8" />
